@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'export',
-  basePath: '/edebiyat-v4-final', // Resimdeki doğru depo adın bu
+  basePath: '/edebiyat-v5', 
   images: {
     unoptimized: true,
   },
