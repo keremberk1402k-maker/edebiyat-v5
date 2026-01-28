@@ -9,32 +9,31 @@ const BASE_WIDTH = 1200;
 const BASE_HEIGHT = 850;
 const FALLBACK_ARENA_BG = "https://images.unsplash.com/photo-1516912481808-3406841bd33c?q=80&w=1000";
 
-// --- STİLLER (ESKİ HALİNE GETİRİLDİ) ---
+// --- STİLLER ---
 const btnStyle = {
     padding: '10px 20px',
     fontSize: '16px',
     cursor: 'pointer',
     borderRadius: '10px',
     border: 'none',
-    background: '#333', // Klasik koyu ton
+    background: '#333',
     color: 'white',
     fontWeight: 'bold',
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'center', // Ortalamayı garantiye aldık
+    justifyContent: 'center',
     gap: '5px',
     transition: '0.2s',
     boxShadow: '0 4px 6px rgba(0,0,0,0.3)'
 };
 
-// Senin sevdiğin neon tarzı koruyan stil
 const actionBtnStyle = {
     padding: '15px 30px',
     fontSize: '20px',
     cursor: 'pointer',
     borderRadius: '15px',
     border: 'none',
-    background: '#00eaff', // Neon Mavi
+    background: '#00eaff',
     color: 'black',
     fontWeight: 'bold',
     display: 'flex',
@@ -47,14 +46,14 @@ const actionBtnStyle = {
 
 const dangerBtnStyle = {
     ...btnStyle,
-    background: '#ff0055', // Neon Kırmızı
+    background: '#ff0055',
     color: 'white',
     boxShadow: '0 0 10px rgba(255, 0, 85, 0.4)'
 };
 
 const successBtnStyle = {
     ...btnStyle,
-    background: '#00ff66', // Neon Yeşil
+    background: '#00ff66',
     color: 'black',
     boxShadow: '0 0 10px rgba(0, 255, 102, 0.4)'
 };
@@ -63,7 +62,7 @@ const containerStyle = {
     height: '100vh',
     display: 'flex',
     flexDirection: 'column' as const,
-    background: '#050505', // Tam siyah değil, yumuşak siyah
+    background: '#050505',
     color: 'white',
     fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
     overflow: 'hidden'
@@ -212,31 +211,23 @@ export default function Game() {
   const [userRank, setUserRank] = useState<number | null>(null);
   const [arenaSearching, setArenaSearching] = useState(false);
 
-  // --- GÜNCELLENMİŞ SES SİSTEMİ (Daha Güvenilir Linkler) ---
+  // --- SES SİSTEMİ ---
   const playSound = (type: 'click' | 'correct' | 'wrong' | 'win') => {
     if (isMuted) return;
-    
-    // SoundJay gibi daha stabil ve ücretsiz kaynaklar kullanıldı
     const sounds = {
-        'click': 'https://www.soundjay.com/buttons/button-1.mp3', // Net bir tık sesi
-        'correct': 'https://www.soundjay.com/misc/success-bell-01.mp3', // Başarı çanı
-        'wrong': 'https://www.soundjay.com/misc/fail-buzzer-01.mp3', // Hata buzzerı
-        'win': 'https://www.soundjay.com/human/applause-01.mp3' // Alkış
+        'click': 'https://www.soundjay.com/buttons/button-1.mp3',
+        'correct': 'https://www.soundjay.com/misc/success-bell-01.mp3',
+        'wrong': 'https://www.soundjay.com/misc/fail-buzzer-01.mp3',
+        'win': 'https://www.soundjay.com/human/applause-01.mp3'
     };
-
     try {
         const audio = new Audio(sounds[type]);
         audio.volume = 0.5; 
-        // Kullanıcı etkileşimi olmadan tarayıcılar sesi engelleyebilir, catch ile yakalıyoruz
         const playPromise = audio.play();
         if (playPromise !== undefined) {
-            playPromise.catch(error => {
-                console.log("Ses çalınamadı (Tarayıcı engeli olabilir):", error);
-            });
+            playPromise.catch(error => { console.log("Ses çalınamadı (Tarayıcı engeli olabilir):", error); });
         }
-    } catch (e) {
-        console.log("Ses hatası:", e);
-    }
+    } catch (e) { console.log("Ses hatası:", e); }
   };
 
   const notify = (msg: string, type: 'success' | 'error' = 'success') => {
@@ -418,6 +409,11 @@ export default function Game() {
   const startBotMatch = () => {
       if(!player) return;
       setIsBotMatch(true);
+      // --- HATA DÜZELTİLDİ: OYUNCU TARAFI VE SIRA AYARLANDI ---
+      setPlayerSide('p1'); 
+      setTurn('p1');
+      // -----------------------------------------------------
+
       const botStats = calculateBotStats(player.score);
       setBotDifficulty(botStats);
       const myStats = calcStats(player);
@@ -573,34 +569,6 @@ export default function Game() {
           nb.qIndex = 0;
       }
       setBattle(nb); saveGame(np);
-  };
-
-  const resolveRoundOnline = async (p2LastMove: string) => {
-      const roomRef = ref(db, `arena_rooms/${roomID}`);
-      const snapshot = await get(roomRef);
-      const data = snapshot.val();
-      const p1Move = data.p1_move;
-      const p2Move = p2LastMove;
-      let p1Dmg = 0; let p2Dmg = 0; const baseDmg = 50;
-      if (p1Move === 'correct' && p2Move === 'wrong') { p2Dmg = baseDmg; } 
-      else if (p2Move === 'correct' && p1Move === 'wrong') { p1Dmg = baseDmg; } 
-      else if (p1Move === 'correct' && p2Move === 'correct') { } 
-      else { p1Dmg = 20; p2Dmg = 20; }
-      const newP1Hp = Math.max(0, data.p1.hp - p1Dmg);
-      const newP2Hp = Math.max(0, data.p2.hp - p2Dmg);
-      const updates: any = {};
-      updates[`arena_rooms/${roomID}/p1/hp`] = newP1Hp;
-      updates[`arena_rooms/${roomID}/p2/hp`] = newP2Hp;
-      if (newP1Hp <= 0 || newP2Hp <= 0) {
-          updates[`arena_rooms/${roomID}/gameOver`] = true;
-          updates[`arena_rooms/${roomID}/winner`] = newP1Hp > 0 ? 'p1' : (newP2Hp > 0 ? 'p2' : 'draw');
-      } else {
-          updates[`arena_rooms/${roomID}/turn`] = 'p1';
-          updates[`arena_rooms/${roomID}/questionIndex`] = Math.floor(Math.random() * expandedQPool.all.length);
-          updates[`arena_rooms/${roomID}/p1_move`] = null;
-          updates[`arena_rooms/${roomID}/p2_move`] = null;
-      }
-      await update(ref(db), updates);
   };
 
   const buyItem = (id:string) => { playSound('click'); const it=itemDB[id]; if(player!.gold>=it.cost){let np={...player!}; np.gold-=it.cost; if(it.type==='joker') np.jokers[it.jokerId!]=(np.jokers[it.jokerId!]||0)+1; else np.inventory.push({...it, uid:Date.now()}); saveGame(np); notify("Satın Alındı!", "success");}else notify("Para Yetersiz!", "error"); };
