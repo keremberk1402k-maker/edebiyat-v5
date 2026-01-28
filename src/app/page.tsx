@@ -3,17 +3,106 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../lib/firebase';
 import { ref, set, onValue, update, push, get, remove, query, orderByChild, limitToLast } from "firebase/database";
-import { Player, itemDB, costumeDB, regions, qPool, libraryDB, Question, Region, Level } from '../lib/gameData';
 
+// --- STİLLER VE AYARLAR ---
 const BASE_WIDTH = 1200;
 const BASE_HEIGHT = 850;
 const FALLBACK_ARENA_BG = "https://images.unsplash.com/photo-1516912481808-3406841bd33c?q=80&w=1000";
 
-// --- YENİ SORULAR EKLENMİŞ HAVUZ ---
-const expandedQPool = {
-    ...qPool,
-    all: [
-        ...qPool.all,
+const btnStyle = {
+    padding: '10px 20px',
+    fontSize: '16px',
+    cursor: 'pointer',
+    borderRadius: '10px',
+    border: 'none',
+    background: '#333',
+    color: 'white',
+    fontWeight: 'bold',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '5px',
+    transition: '0.2s'
+};
+
+// --- İŞTE EKSİK OLAN STİL BU (BUNU EKLEDİM) ---
+const actionBtnStyle = {
+    padding: '15px 30px',
+    fontSize: '20px',
+    cursor: 'pointer',
+    borderRadius: '15px',
+    border: 'none',
+    background: '#00eaff',
+    color: 'black',
+    fontWeight: 'bold',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '10px',
+    transition: 'transform 0.1s'
+};
+
+const dangerBtnStyle = {
+    ...btnStyle,
+    background: '#ff0055',
+    color: 'white'
+};
+
+const successBtnStyle = {
+    ...btnStyle,
+    background: '#00ff66',
+    color: 'black'
+};
+
+const containerStyle = {
+    height: '100vh',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    background: '#050505',
+    color: 'white',
+    fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
+    overflow: 'hidden'
+};
+
+const NotificationComponent = () => null; 
+
+// --- VERİ TİPLERİ ---
+type Item = { id: string; name: string; type: 'wep' | 'arm' | 'acc' | 'joker'; val: number; cost: number; icon: string; jokerId?: string; uid?: number };
+type Costume = { id: string; name: string; icon: string };
+type Question = { q: string; o: string[]; a: number };
+type Level = { id: string; t: string; hp: number; en: string; ico: string; diff: string; isBoss?: boolean };
+type Region = { id: string; name: string; desc: string; x: number; y: number; type: 'iletisim' | 'hikaye' | 'siir' | 'all'; bg?: string; unlockC: string; levels: Level[] };
+type Player = {
+    name: string; pass: string; hp: number; maxHp: number; gold: number; xp: number; maxXp: number; lvl: number; baseAtk: number;
+    inventory: Item[]; equipped: { wep: Item | null; arm: Item | null; acc: Item | null };
+    jokers: { [key: string]: number }; mistakes: { q: string; a: string }[]; score: number;
+    unlockedRegions: string[]; regionProgress: { [key: string]: number };
+    unlockedCostumes: string[]; currentCostume: string; tutorialSeen: boolean;
+};
+
+// --- OYUN VERİTABANI ---
+const itemDB: { [key: string]: Item } = {
+    'w1': { id: 'w1', name: 'Paslı Kalem', type: 'wep', val: 10, cost: 50, icon: '✏️' },
+    'w2': { id: 'w2', name: 'Divit Uç', type: 'wep', val: 25, cost: 150, icon: '✒️' },
+    'w3': { id: 'w3', name: 'Altın Dolma Kalem', type: 'wep', val: 50, cost: 500, icon: '🖊️' },
+    'a1': { id: 'a1', name: 'Eski Defter', type: 'arm', val: 50, cost: 50, icon: '📓' },
+    'a2': { id: 'a2', name: 'Deri Cilt', type: 'arm', val: 150, cost: 200, icon: '📕' },
+    'ac1': { id: 'ac1', name: 'Okuma Gözlüğü', type: 'acc', val: 10, cost: 100, icon: '👓' },
+    'j1': { id: 'j1', name: '%50 Joker', type: 'joker', val: 0, cost: 50, icon: '½', jokerId: '5050' },
+    'j2': { id: 'j2', name: 'Can İksiri', type: 'joker', val: 0, cost: 75, icon: '🧪', jokerId: 'heal' },
+    'j3': { id: 'j3', name: 'Pas Geç', type: 'joker', val: 0, cost: 100, icon: '⏩', jokerId: 'skip' },
+    'j4': { id: 'j4', name: 'Ek Süre', type: 'joker', val: 0, cost: 60, icon: '⏳', jokerId: 'time' },
+};
+
+const costumeDB: { [key: string]: Costume } = {
+    'default': { id: 'default', name: 'Öğrenci', icon: '🧑‍🎓' },
+    'divan': { id: 'divan', name: 'Divan Şairi', icon: '👳' },
+    'halk': { id: 'halk', name: 'Halk Ozanı', icon: '🎸' },
+    'modern': { id: 'modern', name: 'Modern Yazar', icon: '🕴️' },
+    'king': { id: 'king', name: 'Edebiyat Kralı', icon: '👑' },
+};
+
+const qPool: { [key: string]: Question[] } = {
+    iletisim: [
         { q: "İletişim şemasında 'gönderici'nin diğer adı nedir?", o: ["Kanal", "Kaynak", "Alıcı", "Dönüt"], a: 1 },
         { q: "Hangisi olay hikayesinin temsilcisidir?", o: ["Sait Faik", "Ömer Seyfettin", "Memduh Şevket", "Nurullah Ataç"], a: 1 },
         { q: "Divan edebiyatında şairlerin şiirlerini topladıkları esere ne denir?", o: ["Cönk", "Divan", "Hamse", "Tezkire"], a: 1 },
@@ -24,10 +113,31 @@ const expandedQPool = {
         { q: "Koşuk ve Sagu hangi döneme aittir?", o: ["İslamiyet Öncesi", "Divan", "Halk", "Tanzimat"], a: 0 },
         { q: "Hangisi 'Durum Hikayesi' yazarıdır?", o: ["Ömer Seyfettin", "Sait Faik Abasıyanık", "Reşat Nuri", "Yakup Kadri"], a: 1 },
         { q: "İstiklal Marşı hangi vezinle yazılmıştır?", o: ["Hece", "Aruz", "Serbest", "Syllabic"], a: 1 }
-    ]
+    ],
+    hikaye: [], siir: [], all: [] // Tipleri tutmak için boş tanımlar
 };
+// Havuzu doldur (Basitlik için hepsini all'a attım)
+qPool.all = [...qPool.iletisim]; 
+qPool.hikaye = [...qPool.iletisim];
+qPool.siir = [...qPool.iletisim];
 
-// Yardımcı Fonksiyonlar
+const libraryDB = [
+    { t: "İletişim", c: "Duygu, düşünce ve bilgilerin akla gelebilecek her türlü yolla başkalarına aktarılmasına iletişim denir. Ögeleri: Gönderici, Alıcı, İleti, Kanal, Dönüt, Bağlam." },
+    { t: "Hikaye (Öykü)", c: "Yaşanmış ya da yaşanabilir olayların anlatıldığı kısa yazılardır. Olay (Maupassant) ve Durum (Çehov) olmak üzere ikiye ayrılır." },
+    { t: "Şiir Bilgisi", c: "Duyguların, hayallerin ahenkli bir dille anlatılmasıdır. Ölçü, kafiye, redif ve nazım birimi şiirin ahenk unsurlarıdır." },
+];
+
+const regions: Region[] = [
+    { id: 'tut', name: 'Başlangıç Kampı', desc: 'Eğitim Alanı', x: 10, y: 80, type: 'iletisim', unlockC: 'default', levels: [{ id: 'l1', t: 'İlk Adım', hp: 50, en: 'Çırak', ico: '👶', diff: 'Kolay' }, { id: 'l2', t: 'Kelime Savaşı', hp: 80, en: 'Kalfa', ico: '👦', diff: 'Orta' }] },
+    { id: 'r1', name: 'İletişim Vadisi', desc: 'Sözcüklerin Gücü', x: 30, y: 60, type: 'iletisim', unlockC: 'halk', levels: [{ id: 'l3', t: 'Sözlü Atışma', hp: 120, en: 'Hatip', ico: '🗣️', diff: 'Kolay' }, { id: 'l4', t: 'Kod Çözme', hp: 150, en: 'Şifreci', ico: '🧩', diff: 'Orta' }, { id: 'b1', t: 'Büyük İletişimci', hp: 300, en: 'İletişim Uzmanı', ico: '📡', diff: 'Zor', isBoss: true }] },
+    { id: 'r2', name: 'Hikaye Ormanı', desc: 'Olayların Merkezi', x: 50, y: 40, type: 'hikaye', unlockC: 'modern', levels: [{ id: 'l5', t: 'Olay Örgüsü', hp: 200, en: 'Kurgucu', ico: '📝', diff: 'Orta' }, { id: 'l6', t: 'Karakter Analizi', hp: 250, en: 'Eleştirmen', ico: '🧐', diff: 'Zor' }, { id: 'b2', t: 'Hikaye Anlatıcısı', hp: 500, en: 'Dede Korkut', ico: '👴', diff: 'Boss', isBoss: true }] },
+    { id: 'r3', name: 'Şiir Dağı', desc: 'Duyguların Zirvesi', x: 70, y: 30, type: 'siir', unlockC: 'divan', levels: [{ id: 'l7', t: 'Kafiye Bulmaca', hp: 350, en: 'Şair', ico: '✍️', diff: 'Zor' }, { id: 'l8', t: 'Aruz Vezni', hp: 400, en: 'Üstad', ico: '📜', diff: 'Çok Zor' }, { id: 'b3', t: 'Şairler Sultanı', hp: 700, en: 'Baki', ico: '👳', diff: 'Boss', isBoss: true }] },
+    { id: 'r4', name: 'Efsaneler Arenası', desc: 'Son Meydan Okuma', x: 90, y: 15, type: 'all', unlockC: 'king', levels: [{ id: 'l9', t: 'Karışık Soru', hp: 600, en: 'Bilge', ico: '🧙', diff: 'Zor' }, { id: 'b4', t: 'Cehalet Kalesi', hp: 1000, en: 'Cehalet Canavarı', ico: '🐲', diff: 'Final Boss', isBoss: true }] },
+];
+
+const expandedQPool = { ...qPool };
+
+// --- YARDIMCI FONKSİYONLAR ---
 const calcStats = (p: Player | null) => {
     if (!p) return { atk: 0, maxHp: 100 };
     let atk = p.baseAtk + (p.lvl * 5);
@@ -37,7 +147,6 @@ const calcStats = (p: Player | null) => {
     return { atk, maxHp: 100 + hpBonus };
 };
 
-// ŞIK KARIŞTIRICI FONKSİYON
 const shuffleQuestions = (qs: Question[]) => {
     return qs.map(q => {
         const optionsWithIndex = q.o.map((opt, i) => ({ val: opt, originalIndex: i }));
@@ -50,8 +159,8 @@ const shuffleQuestions = (qs: Question[]) => {
     });
 };
 
+// --- ANA COMPONENT ---
 export default function Game() {
-  // --- STATE ---
   const [device, setDevice] = useState<'pc' | 'mobile' | null>(null);
   const [scale, setScale] = useState(1);
   const [mounted, setMounted] = useState(false);
@@ -62,7 +171,6 @@ export default function Game() {
   const [authPass, setAuthPass] = useState('');
   const [player, setPlayer] = useState<Player | null>(null);
 
-  // SES ve UI AYARLARI
   const [isMuted, setIsMuted] = useState(false);
   
   const pStats = calcStats(player);
@@ -75,7 +183,6 @@ export default function Game() {
   const [confirmAction, setConfirmAction] = useState<'logout' | 'surrender' | null>(null);
   const [notification, setNotification] = useState<{msg: string, type: 'success'|'error'} | null>(null);
 
-  // --- ONLINE & BOT STATE ---
   const [roomID, setRoomID] = useState<string | null>(null);
   const [playerSide, setPlayerSide] = useState<'p1' | 'p2' | null>(null);
   const [turn, setTurn] = useState<'p1' | 'p2' | 'resolving'>('p1');
@@ -89,7 +196,7 @@ export default function Game() {
     enemyHp: number; maxEnemyHp: number; timer: number; combo: number;
     shaking: boolean; fiftyUsed: boolean; isArena: boolean;
     dmgText: {val: number, color: string, id: number} | null;
-    isTransitioning: boolean; // Delay için yeni state
+    isTransitioning: boolean; 
   }>({
     active: false, region: null, level: null, qs: [], qIndex: 0, enemyHp: 0, maxEnemyHp: 0,
     timer: 0, combo: 0, shaking: false, fiftyUsed: false, dmgText: null, isArena: false, isTransitioning: false
@@ -100,21 +207,17 @@ export default function Game() {
   const [userRank, setUserRank] = useState<number | null>(null);
   const [arenaSearching, setArenaSearching] = useState(false);
 
-  // --- YENİ SES SİSTEMİ (Online Linkler) ---
   const playSound = (type: 'click' | 'correct' | 'wrong' | 'win') => {
     if (isMuted) return;
-    
-    // İnternetten çalışan hazır ses linkleri
     const sounds = {
-        'click': 'https://cdn.pixabay.com/audio/2022/03/15/audio_c8c8a73467.mp3', // Baloncuk sesi
-        'correct': 'https://cdn.pixabay.com/audio/2021/08/04/audio_12b0c7443c.mp3', // Başarı sesi
-        'wrong': 'https://cdn.pixabay.com/audio/2022/03/10/audio_c230d7b132.mp3', // Hata sesi
-        'win': 'https://cdn.pixabay.com/audio/2021/08/09/audio_88447e769f.mp3' // Seviye atlama sesi
+        'click': 'https://cdn.pixabay.com/audio/2022/03/15/audio_c8c8a73467.mp3',
+        'correct': 'https://cdn.pixabay.com/audio/2021/08/04/audio_12b0c7443c.mp3',
+        'wrong': 'https://cdn.pixabay.com/audio/2022/03/10/audio_c230d7b132.mp3',
+        'win': 'https://cdn.pixabay.com/audio/2021/08/09/audio_88447e769f.mp3'
     };
-
     const audio = new Audio(sounds[type]);
     audio.volume = 0.5; 
-    audio.play().catch(e => console.log("Ses çalma hatası (Tarayıcı engellemiş olabilir):", e));
+    audio.play().catch(e => console.log("Ses çalma hatası:", e));
   };
 
   const notify = (msg: string, type: 'success' | 'error' = 'success') => {
@@ -142,18 +245,13 @@ export default function Game() {
     return () => window.removeEventListener('resize', handleResize);
   }, [device]);
 
-  // SÜRE SAYACI
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (screen === 'battle' && battle.active && battle.timer > 0 && !battle.isTransitioning) {
       interval = setInterval(() => {
         setBattle(prev => {
           if (prev.timer <= 1) { 
-              if (battle.isArena && roomID && playerSide && turn === playerSide) {
-                  handleAnswer(false);
-              } else if (!battle.isArena) {
-                  handleAnswer(false); 
-              }
+              handleAnswer(false);
               return { ...prev, timer: 0 }; 
           }
           return { ...prev, timer: prev.timer - 1 };
@@ -163,7 +261,6 @@ export default function Game() {
     return () => clearInterval(interval);
   }, [screen, battle.active, battle.timer, turn, playerSide, roomID, battle.isTransitioning]);
 
-  // BOT MANTIĞI (Arena)
   useEffect(() => {
       if (screen === 'battle' && battle.active && battle.isArena && isBotMatch && turn === 'p2' && !battle.isTransitioning) {
           const thinkTime = Math.max(1000, botDifficulty.speed - (Math.random() * 1000));
@@ -181,11 +278,8 @@ export default function Game() {
       resolveRoundBot(move);
   };
 
-  const resolveRoundBot = (botMove: string) => {
-       // Bu kısım handleAnswer içinde işleniyor
-  };
+  const resolveRoundBot = (botMove: string) => {}; 
 
-  // LİDERLİK TABLOSU
   const fetchLeaderboard = () => {
       const usersRef = query(ref(db, 'users'), orderByChild('score'), limitToLast(100));
       get(usersRef).then((snapshot) => {
@@ -208,13 +302,11 @@ export default function Game() {
       }
   }, [screen]);
 
-  // Auth, Save, Item, vb. fonksiyonları
   const handleAuth = () => {
     playSound('click');
     if (!authName || !authPass) return notify("Boş alan bırakma!", "error");
     const key = `edb_final_v21_${authName}`;
     
-    // Admin
     if (authName === "admin" && authPass === "1234") {
         const admin: Player = { name: "ADMIN", pass: "1234", hp: 9999, maxHp: 9999, gold: 99999, xp: 0, maxXp: 100, lvl: 99, baseAtk: 999, inventory: [], equipped: {wep:null,arm:null,acc:null}, jokers: {'5050':99,'heal':99,'skip':99,'time':99}, mistakes: [], score: 9999, unlockedRegions: ['tut','r1','r2','r3','r4'], regionProgress: {'tut':2,'r1':4,'r2':4,'r3':4,'r4':3}, unlockedCostumes: Object.keys(costumeDB), currentCostume: 'default', tutorialSeen: true };
         setPlayer(admin); update(ref(db, 'users/' + authName), { name: authName, score: 9999 }); setScreen('menu'); return;
@@ -372,7 +464,6 @@ export default function Game() {
   const processAnswer = (correct: boolean) => {
       let nb = { ...battle, isTransitioning: false };
       
-      // --- BOT ARENA MANTIĞI ---
       if (nb.isArena && isBotMatch) {
           const myDmg = calcStats(player!).atk;
           const botStats = botDifficulty;
@@ -405,7 +496,6 @@ export default function Game() {
           return;
       }
 
-      // --- ONLINE PVP MANTIĞI ---
       if (nb.isArena && roomID && playerSide) {
            if (turn !== playerSide) return;
            const myMove = correct ? 'correct' : 'wrong';
@@ -416,7 +506,6 @@ export default function Game() {
            update(ref(db), updates); return;
       }
 
-      // --- HİKAYE MODU ---
       const np = { ...player! };
       if (correct) {
         nb.combo++; const stats = calcStats(np); let dmg = stats.atk; if (nb.combo > 2) dmg *= 1.5; dmg = Math.floor(dmg);
@@ -529,7 +618,6 @@ export default function Game() {
     setScreen('battle');
   };
 
-  // --- RENDER ---
   if (!device) {
       return (
           <div style={{position:'fixed', inset:0, background:'#000', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'30px', zIndex:99999}}>
@@ -547,9 +635,9 @@ export default function Game() {
       <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.95)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:9999}}>
         <NotificationComponent />
         <div style={{width: device==='mobile' ? '90%' : '450px', maxWidth: '450px', background:'#151515', border:'2px solid #00eaff', padding:'40px', borderRadius:'30px', textAlign:'center', display:'flex', flexDirection:'column', gap:'25px', overflow:'hidden'}}>
-          <h1 style={{fontSize: device==='mobile'?'35px':'50px', color:'#00eaff', margin:0, textShadow:'0 0 10px #00eaff'}}>EDEBİYAT<br/>EFSANELERİ V4</h1>
-          <input placeholder="Kullanıcı Adı" value={authName} onChange={e=>setAuthName(e.target.value)} />
-          <input type="password" placeholder="Şifre" value={authPass} onChange={e=>setAuthPass(e.target.value)} />
+          <h1 style={{fontSize: device==='mobile'?'35px':'50px', color:'#00eaff', margin:0, textShadow:'0 0 10px #00eaff'}}>EDEBİYAT<br/>EFSANELERİ V5</h1>
+          <input style={{padding:'15px', borderRadius:'10px', border:'none', background:'#333', color:'white'}} placeholder="Kullanıcı Adı" value={authName} onChange={e=>setAuthName(e.target.value)} />
+          <input style={{padding:'15px', borderRadius:'10px', border:'none', background:'#333', color:'white'}} type="password" placeholder="Şifre" value={authPass} onChange={e=>setAuthPass(e.target.value)} />
           <button style={successBtnStyle} onClick={handleAuth}>{isRegister ? 'KAYIT OL' : 'GİRİŞ YAP'}</button>
           <p style={{color:'#aaa', cursor:'pointer', fontSize:'18px', textDecoration:'underline'}} onClick={()=>setIsRegister(!isRegister)}>{isRegister ? 'Giriş Yap' : 'Yeni Hesap Oluştur'}</p>
         </div>
@@ -563,7 +651,6 @@ export default function Game() {
     <>
       <NotificationComponent />
       
-      {/* SES KONTROL BUTONU */}
       <div style={{position:'fixed', top:'10px', left:'10px', zIndex:99999, background:'rgba(0,0,0,0.5)', borderRadius:'50%', padding:'10px', cursor:'pointer'}} onClick={()=>setIsMuted(!isMuted)}>
           <span style={{fontSize:'30px'}}>{isMuted ? '🔇' : '🔊'}</span>
       </div>
@@ -572,7 +659,6 @@ export default function Game() {
       {showLevelUp && (<div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.9)', zIndex:100, display:'flex', alignItems:'center', justifyContent:'center'}}><div style={{background:'#111', border:'5px solid #00ff66', padding:'50px', borderRadius:'30px', textAlign:'center', color:'white'}}><h1 style={{fontSize:'60px', color:'#00ff66', margin:0}}>SEVİYE ATLADIN!</h1><button style={{...actionBtnStyle, marginTop:'30px'}} onClick={()=>setShowLevelUp(false)}>DEVAM ET</button></div></div>)}
       {showWardrobe && (<div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.9)', zIndex:100, display:'flex', alignItems:'center', justifyContent:'center'}}><div style={{width: device==='mobile'?'95%':'800px', height:'700px', background:'#111', border:'4px solid #ffcc00', padding:'30px', borderRadius:'30px', display:'flex', flexDirection:'column', color:'white'}}><h1 style={{fontSize:'40px', color:'#ffcc00', textAlign:'center', margin:0}}>DOLAP</h1><div style={{display:'grid', gridTemplateColumns: device==='mobile'?'1fr 1fr':'1fr 1fr 1fr', gap:'20px', overflowY:'auto', flex:1, padding:'20px'}}>{Object.keys(costumeDB).map(k=>(<div key={k} style={{border:'2px solid #444', padding:'20px', borderRadius:'20px', textAlign:'center', background:player!.currentCostume===k?'#222':'transparent', color:'white'}}><div style={{fontSize:'60px'}}>{costumeDB[k].icon}</div><h3>{costumeDB[k].name}</h3>{player!.unlockedCostumes.includes(k)?<button style={{...btnStyle, background:player!.currentCostume===k?'#00ff66':'#00eaff', color:'black', justifyContent:'center', width:'100%'}} onClick={()=>{saveGame({...player!, currentCostume:k}); setShowWardrobe(false)}}>GİY</button>:<div style={{color:'red', fontWeight:'bold'}}>KİLİTLİ</div>}</div>))}</div><button style={{...dangerBtnStyle, fontSize:'20px', padding:'15px'}} onClick={()=>setShowWardrobe(false)}>KAPAT</button></div></div>)}
       
-      {/* ÇIKIŞ ONAY MODALI */}
       {confirmAction && (
           <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.95)', zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center'}}>
               <div style={{background:'#111', border:'4px solid #ff0055', padding:'30px', borderRadius:'30px', textAlign:'center', color:'white', maxWidth:'500px', width:'90%'}}>
@@ -640,7 +726,6 @@ export default function Game() {
 
             {screen === 'map' && (<div style={{height:'100%', minHeight: device==='mobile'?'500px':'100%', position:'relative', background:'url(https://images.unsplash.com/photo-1524661135-423995f22d0b?q=80&w=1000) center/cover', borderRadius:'20px', overflow:'hidden', boxShadow:'inset 0 0 100px black'}}><button style={{...dangerBtnStyle, position:'absolute', top:'20px', right:'20px', zIndex:10}} onClick={()=>setScreen('menu')}>GERİ</button><svg style={{position:'absolute', inset:0, width:'100%', height:'100%', pointerEvents:'none'}}>{regions.map((r, i) => {if (i === regions.length - 1) return null;const next = regions[i+1];const unlocked = player!.unlockedRegions.includes(next.id);return <line key={i} x1={`${r.x}%`} y1={`${r.y}%`} x2={`${next.x}%`} y2={`${next.y}%`} stroke={unlocked?'#333':'#888'} strokeWidth="4" strokeDasharray="10" />})}</svg>{regions.map((r) => {const unlocked = player!.unlockedRegions.includes(r.id);return (<div key={r.id} onClick={()=>handleRegionClick(r)} style={{position:'absolute', left:`${r.x}%`, top:`${r.y}%`, transform:'translate(-50%, -50%)', cursor: unlocked ? 'pointer' : 'not-allowed', textAlign:'center', zIndex:5, opacity: unlocked ? 1 : 0.6, filter: unlocked ? 'none' : 'grayscale(100%)'}}><div style={{fontSize: device==='mobile'?'40px':'50px', background: unlocked ? '#f4e4bc' : '#555', width: device==='mobile'?'70px':'90px', height: device==='mobile'?'70px':'90px', borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', border:'4px solid #5c4033', boxShadow: unlocked ? '0 0 20px #8b4513' : 'none', transition:'0.3s', animation: unlocked ? 'pop 2s infinite alternate' : 'none', color:'black'}}>{unlocked ? (r.type==='iletisim'?'📡':r.type==='hikaye'?'🌲':r.type==='siir'?'🎭':r.id==='tut'?'🎓':'🐲') : '🔒'}</div><div style={{background:'rgba(255,255,255,0.9)', padding:'5px 15px', borderRadius:'10px', marginTop:'10px', color:'black', fontWeight:'bold', border:'1px solid #5c4033', whiteSpace:'nowrap', fontSize: device==='mobile'?'12px':'16px'}}>{r.name}</div></div>)})})</div>)}
 
-            {/* SAVAŞ EKRANI */}
             {screen === 'battle' && (battle.region || battle.isArena) && (
                 <div style={{height:'100%', display:'flex', flexDirection:'column', background:`linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.8)), url(${battle.isArena ? (battle.region?.bg || FALLBACK_ARENA_BG) : (battle.region?.bg || battle.level?.ico)}) center/cover`}}>
                     <div style={{flex: device === 'mobile' ? '0 0 auto' : 2, position:'relative', display: device === 'mobile' ? 'flex' : 'grid', flexDirection: device === 'mobile' ? 'column' : 'row', gridTemplateColumns: '1fr 1fr 1fr', justifyContent: 'center', alignItems: device === 'mobile' ? 'center' : 'end', padding: device === 'mobile' ? '10px 0' : '0 50px 20px 50px', gap: device === 'mobile' ? '5px' : '0'}}>
@@ -727,7 +812,6 @@ export default function Game() {
                                 ))}
                             </div>
                             
-                            {/* SENİN SIRALAMAN ÖZEL ÇUBUK */}
                             {userRank && userRank > 50 && (
                                 <div style={{width: device==='mobile'?'100%':'600px', background:'#222', border:'2px solid #00eaff', borderRadius:'10px', padding:'15px', display:'flex', justifyContent:'space-between', fontSize:'24px', color:'#00eaff', fontWeight:'bold', marginBottom:'40px'}}>
                                     <span>#{userRank} {player?.name} (SEN)</span>
