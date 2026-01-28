@@ -4,60 +4,66 @@ import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../lib/firebase';
 import { ref, set, onValue, update, push, get, remove, query, orderByChild, limitToLast } from "firebase/database";
 
-// --- STİLLER VE AYARLAR ---
+// --- SABİT AYARLAR ---
 const BASE_WIDTH = 1200;
 const BASE_HEIGHT = 850;
 const FALLBACK_ARENA_BG = "https://images.unsplash.com/photo-1516912481808-3406841bd33c?q=80&w=1000";
 
+// --- STİLLER (ESKİ HALİNE GETİRİLDİ) ---
 const btnStyle = {
     padding: '10px 20px',
     fontSize: '16px',
     cursor: 'pointer',
     borderRadius: '10px',
     border: 'none',
-    background: '#333',
+    background: '#333', // Klasik koyu ton
     color: 'white',
     fontWeight: 'bold',
     display: 'flex',
     alignItems: 'center',
+    justifyContent: 'center', // Ortalamayı garantiye aldık
     gap: '5px',
-    transition: '0.2s'
+    transition: '0.2s',
+    boxShadow: '0 4px 6px rgba(0,0,0,0.3)'
 };
 
-// --- İŞTE EKSİK OLAN STİL BU (BUNU EKLEDİM) ---
+// Senin sevdiğin neon tarzı koruyan stil
 const actionBtnStyle = {
     padding: '15px 30px',
     fontSize: '20px',
     cursor: 'pointer',
     borderRadius: '15px',
     border: 'none',
-    background: '#00eaff',
+    background: '#00eaff', // Neon Mavi
     color: 'black',
     fontWeight: 'bold',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     gap: '10px',
-    transition: 'transform 0.1s'
+    transition: 'transform 0.1s',
+    boxShadow: '0 0 15px rgba(0, 234, 255, 0.4)'
 };
 
 const dangerBtnStyle = {
     ...btnStyle,
-    background: '#ff0055',
-    color: 'white'
+    background: '#ff0055', // Neon Kırmızı
+    color: 'white',
+    boxShadow: '0 0 10px rgba(255, 0, 85, 0.4)'
 };
 
 const successBtnStyle = {
     ...btnStyle,
-    background: '#00ff66',
-    color: 'black'
+    background: '#00ff66', // Neon Yeşil
+    color: 'black',
+    boxShadow: '0 0 10px rgba(0, 255, 102, 0.4)'
 };
 
 const containerStyle = {
     height: '100vh',
     display: 'flex',
     flexDirection: 'column' as const,
-    background: '#050505',
+    background: '#050505', // Tam siyah değil, yumuşak siyah
     color: 'white',
     fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
     overflow: 'hidden'
@@ -116,7 +122,6 @@ const qPool: { [key: string]: Question[] } = {
     ],
     hikaye: [], siir: [], all: [] // Tipleri tutmak için boş tanımlar
 };
-// Havuzu doldur (Basitlik için hepsini all'a attım)
 qPool.all = [...qPool.iletisim]; 
 qPool.hikaye = [...qPool.iletisim];
 qPool.siir = [...qPool.iletisim];
@@ -207,17 +212,31 @@ export default function Game() {
   const [userRank, setUserRank] = useState<number | null>(null);
   const [arenaSearching, setArenaSearching] = useState(false);
 
+  // --- GÜNCELLENMİŞ SES SİSTEMİ (Daha Güvenilir Linkler) ---
   const playSound = (type: 'click' | 'correct' | 'wrong' | 'win') => {
     if (isMuted) return;
+    
+    // SoundJay gibi daha stabil ve ücretsiz kaynaklar kullanıldı
     const sounds = {
-        'click': 'https://cdn.pixabay.com/audio/2022/03/15/audio_c8c8a73467.mp3',
-        'correct': 'https://cdn.pixabay.com/audio/2021/08/04/audio_12b0c7443c.mp3',
-        'wrong': 'https://cdn.pixabay.com/audio/2022/03/10/audio_c230d7b132.mp3',
-        'win': 'https://cdn.pixabay.com/audio/2021/08/09/audio_88447e769f.mp3'
+        'click': 'https://www.soundjay.com/buttons/button-1.mp3', // Net bir tık sesi
+        'correct': 'https://www.soundjay.com/misc/success-bell-01.mp3', // Başarı çanı
+        'wrong': 'https://www.soundjay.com/misc/fail-buzzer-01.mp3', // Hata buzzerı
+        'win': 'https://www.soundjay.com/human/applause-01.mp3' // Alkış
     };
-    const audio = new Audio(sounds[type]);
-    audio.volume = 0.5; 
-    audio.play().catch(e => console.log("Ses çalma hatası:", e));
+
+    try {
+        const audio = new Audio(sounds[type]);
+        audio.volume = 0.5; 
+        // Kullanıcı etkileşimi olmadan tarayıcılar sesi engelleyebilir, catch ile yakalıyoruz
+        const playPromise = audio.play();
+        if (playPromise !== undefined) {
+            playPromise.catch(error => {
+                console.log("Ses çalınamadı (Tarayıcı engeli olabilir):", error);
+            });
+        }
+    } catch (e) {
+        console.log("Ses hatası:", e);
+    }
   };
 
   const notify = (msg: string, type: 'success' | 'error' = 'success') => {
