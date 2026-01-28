@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'export',
-  basePath: '/edebiyat-v5', 
+  basePath: '/edebiyat-v5',
   images: {
     unoptimized: true,
   },
