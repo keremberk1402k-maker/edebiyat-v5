@@ -1,77 +1,74 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { db } from '../lib/firebase';
-import { ref, set, onValue, update, push, get, remove, query, orderByChild, limitToLast } from "firebase/database";
+import { ref, update, query, orderByChild, limitToLast, get, push, set, onValue, remove } from "firebase/database";
 
-// --- SABİT AYARLAR ---
+// --- AYARLAR ---
 const BASE_WIDTH = 1200;
-const BASE_HEIGHT = 850;
-const FALLBACK_ARENA_BG = "https://images.unsplash.com/photo-1516912481808-3406841bd33c?q=80&w=1000";
 
-// --- ESKİ TEMA (KLASİK NEON) ---
+// --- TASARIM (Ferah ve Geniş) ---
 const containerStyle = {
     height: '100vh',
     display: 'flex',
     flexDirection: 'column' as const,
-    background: '#050505', // Orijinal koyu siyah
+    background: 'radial-gradient(circle, #1a1a20 0%, #000000 100%)',
     color: 'white',
     fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
     overflow: 'hidden'
 };
 
 const btnStyle = {
-    padding: '10px 20px',
-    fontSize: '16px',
+    padding: '15px 25px', // Butonlar büyüdü
+    fontSize: '18px',
     cursor: 'pointer',
-    borderRadius: '10px',
-    border: 'none',
+    borderRadius: '12px',
+    border: '1px solid rgba(255,255,255,0.1)',
     background: '#333',
     color: 'white',
     fontWeight: 'bold',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: '5px',
+    gap: '10px',
     transition: '0.2s',
-    boxShadow: '0 4px 6px rgba(0,0,0,0.3)'
+    boxShadow: '0 4px 6px rgba(0,0,0,0.3)',
+    textTransform: 'uppercase' as const
 };
 
 const actionBtnStyle = {
-    padding: '15px 30px',
-    fontSize: '20px',
-    cursor: 'pointer',
-    borderRadius: '15px',
+    ...btnStyle,
+    background: 'linear-gradient(90deg, #00eaff, #008c99)',
+    color: 'black',
     border: 'none',
-    background: '#00eaff', // Neon Mavi
-    color: 'black',
-    fontWeight: 'bold',
+    boxShadow: '0 0 20px rgba(0, 234, 255, 0.4)',
+    fontSize: '22px',
+    padding: '20px 50px'
+};
+
+const dangerBtnStyle = { ...btnStyle, background: '#ff0055', color: 'white' };
+const successBtnStyle = { ...btnStyle, background: '#00ff66', color: 'black' };
+
+// Kart görünümü (Market, Çanta vb. için)
+const cardStyle = {
+    background: 'rgba(30, 30, 35, 0.95)',
+    border: '1px solid #444',
+    borderRadius: '20px',
+    padding: '20px',
     display: 'flex',
+    flexDirection: 'column' as const,
     alignItems: 'center',
-    justifyContent: 'center',
     gap: '10px',
-    transition: 'transform 0.1s',
-    boxShadow: '0 0 15px rgba(0, 234, 255, 0.4)'
+    boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+    minHeight: '250px',
+    justifyContent: 'space-between'
 };
 
-const dangerBtnStyle = {
-    ...btnStyle,
-    background: '#ff0055', // Neon Kırmızı
-    color: 'white',
-    boxShadow: '0 0 10px rgba(255, 0, 85, 0.4)'
-};
-
-const successBtnStyle = {
-    ...btnStyle,
-    background: '#00ff66', // Neon Yeşil
-    color: 'black',
-    boxShadow: '0 0 10px rgba(0, 255, 102, 0.4)'
-};
-
-const NotificationComponent = () => null; 
+const NotificationComponent = () => null;
 
 // --- VERİ TİPLERİ ---
-type Item = { id: string; name: string; type: 'wep' | 'arm' | 'acc' | 'joker'; val: number; cost: number; icon: string; jokerId?: string; uid?: number };
+type ItemType = 'wep' | 'arm' | 'acc' | 'joker';
+type Item = { id: string; name: string; type: ItemType; val: number; cost: number; icon: string; jokerId?: string; uid?: number };
 type Costume = { id: string; name: string; icon: string };
 type Question = { q: string; o: string[]; a: number };
 type Level = { id: string; t: string; hp: number; en: string; ico: string; diff: string; isBoss?: boolean };
@@ -84,14 +81,25 @@ type Player = {
     unlockedCostumes: string[]; currentCostume: string; tutorialSeen: boolean;
 };
 
-// --- OYUN VERİTABANI ---
+// --- YENİ EŞYALAR VE NET AÇIKLAMALAR ---
 const itemDB: { [key: string]: Item } = {
+    // SİLAHLAR (SALDIRI)
     'w1': { id: 'w1', name: 'Paslı Kalem', type: 'wep', val: 10, cost: 50, icon: '✏️' },
     'w2': { id: 'w2', name: 'Divit Uç', type: 'wep', val: 25, cost: 150, icon: '✒️' },
-    'w3': { id: 'w3', name: 'Altın Dolma Kalem', type: 'wep', val: 50, cost: 500, icon: '🖊️' },
+    'w3': { id: 'w3', name: 'Altın Dolma', type: 'wep', val: 50, cost: 500, icon: '🖊️' },
+    'w4': { id: 'w4', name: 'Efsanevi Kılıç', type: 'wep', val: 100, cost: 2000, icon: '🗡️' }, // YENİ
+
+    // ZIRHLAR (CAN)
     'a1': { id: 'a1', name: 'Eski Defter', type: 'arm', val: 50, cost: 50, icon: '📓' },
     'a2': { id: 'a2', name: 'Deri Cilt', type: 'arm', val: 150, cost: 200, icon: '📕' },
+    'a3': { id: 'a3', name: 'Ansiklopedi', type: 'arm', val: 300, cost: 800, icon: '📚' },
+    'a4': { id: 'a4', name: 'Titanyum Zırh', type: 'arm', val: 600, cost: 2500, icon: '🛡️' }, // YENİ
+
+    // AKSESUAR (KRİTİK/SALDIRI)
     'ac1': { id: 'ac1', name: 'Okuma Gözlüğü', type: 'acc', val: 10, cost: 100, icon: '👓' },
+    'ac2': { id: 'ac2', name: 'Bilge Şapkası', type: 'acc', val: 30, cost: 600, icon: '🎓' },
+
+    // JOKERLER
     'j1': { id: 'j1', name: '%50 Joker', type: 'joker', val: 0, cost: 50, icon: '½', jokerId: '5050' },
     'j2': { id: 'j2', name: 'Can İksiri', type: 'joker', val: 0, cost: 75, icon: '🧪', jokerId: 'heal' },
     'j3': { id: 'j3', name: 'Pas Geç', type: 'joker', val: 0, cost: 100, icon: '⏩', jokerId: 'skip' },
@@ -101,11 +109,21 @@ const itemDB: { [key: string]: Item } = {
 const costumeDB: { [key: string]: Costume } = {
     'default': { id: 'default', name: 'Öğrenci', icon: '🧑‍🎓' },
     'prince': { id: 'prince', name: 'Şair Prens', icon: '🤴' },
-    'divan': { id: 'divan', name: 'Divan Şairi', icon: '👳' },
     'halk': { id: 'halk', name: 'Halk Ozanı', icon: '🎸' },
+    'divan': { id: 'divan', name: 'Divan Şairi', icon: '👳' },
     'modern': { id: 'modern', name: 'Modern Yazar', icon: '🕴️' },
     'king': { id: 'king', name: 'Edebiyat Kralı', icon: '👑' },
 };
+
+// --- HARİTA KOORDİNATLARI (Yola Oturtuldu) ---
+// Not: X (soldan sağa %), Y (yukarıdan aşağı %)
+const regions: Region[] = [
+    { id: 'tut', name: 'Başlangıç Kampı', desc: 'Eğitim Alanı', x: 10, y: 85, type: 'iletisim', unlockC: 'default', levels: [{ id: 'l1', t: 'İlk Adım', hp: 50, en: 'Çırak', ico: '👶', diff: 'Kolay' }, { id: 'l2', t: 'Kelime Savaşı', hp: 80, en: 'Kalfa', ico: '👦', diff: 'Orta' }] },
+    { id: 'r1', name: 'İletişim Vadisi', desc: 'Sözcüklerin Gücü', x: 30, y: 65, type: 'iletisim', unlockC: 'prince', levels: [{ id: 'l3', t: 'Sözlü Atışma', hp: 120, en: 'Hatip', ico: '🗣️', diff: 'Kolay' }, { id: 'l4', t: 'Kod Çözme', hp: 150, en: 'Şifreci', ico: '🧩', diff: 'Orta' }, { id: 'b1', t: 'Büyük İletişimci', hp: 300, en: 'İletişim Uzmanı', ico: '📡', diff: 'Zor', isBoss: true }] },
+    { id: 'r2', name: 'Hikaye Ormanı', desc: 'Olayların Merkezi', x: 50, y: 45, type: 'hikaye', unlockC: 'halk', levels: [{ id: 'l5', t: 'Olay Örgüsü', hp: 200, en: 'Kurgucu', ico: '📝', diff: 'Orta' }, { id: 'l6', t: 'Karakter Analizi', hp: 250, en: 'Eleştirmen', ico: '🧐', diff: 'Zor' }, { id: 'b2', t: 'Hikaye Anlatıcısı', hp: 500, en: 'Dede Korkut', ico: '👴', diff: 'Boss', isBoss: true }] },
+    { id: 'r3', name: 'Şiir Dağı', desc: 'Duyguların Zirvesi', x: 70, y: 25, type: 'siir', unlockC: 'divan', levels: [{ id: 'l7', t: 'Kafiye Bulmaca', hp: 350, en: 'Şair', ico: '✍️', diff: 'Zor' }, { id: 'l8', t: 'Aruz Vezni', hp: 400, en: 'Üstad', ico: '📜', diff: 'Çok Zor' }, { id: 'b3', t: 'Şairler Sultanı', hp: 700, en: 'Baki', ico: '👳', diff: 'Boss', isBoss: true }] },
+    { id: 'r4', name: 'Efsaneler Arenası', desc: 'Son Meydan Okuma', x: 90, y: 10, type: 'all', unlockC: 'king', levels: [{ id: 'l9', t: 'Karışık Soru', hp: 600, en: 'Bilge', ico: '🧙', diff: 'Zor' }, { id: 'b4', t: 'Cehalet Kalesi', hp: 1000, en: 'Cehalet Canavarı', ico: '🐲', diff: 'Final Boss', isBoss: true }] },
+];
 
 const qPool: { [key: string]: Question[] } = {
     iletisim: [
@@ -120,7 +138,7 @@ const qPool: { [key: string]: Question[] } = {
         { q: "Hangisi 'Durum Hikayesi' yazarıdır?", o: ["Ömer Seyfettin", "Sait Faik Abasıyanık", "Reşat Nuri", "Yakup Kadri"], a: 1 },
         { q: "İstiklal Marşı hangi vezinle yazılmıştır?", o: ["Hece", "Aruz", "Serbest", "Syllabic"], a: 1 }
     ],
-    hikaye: [], siir: [], all: [] 
+    hikaye: [], siir: [], all: []
 };
 qPool.all = [...qPool.iletisim]; 
 qPool.hikaye = [...qPool.iletisim];
@@ -132,17 +150,6 @@ const libraryDB = [
     { t: "Şiir Bilgisi", c: "Duyguların, hayallerin ahenkli bir dille anlatılmasıdır. Ölçü, kafiye, redif ve nazım birimi şiirin ahenk unsurlarıdır." },
 ];
 
-const regions: Region[] = [
-    { id: 'tut', name: 'Başlangıç Kampı', desc: 'Eğitim Alanı', x: 10, y: 80, type: 'iletisim', unlockC: 'default', levels: [{ id: 'l1', t: 'İlk Adım', hp: 50, en: 'Çırak', ico: '👶', diff: 'Kolay' }, { id: 'l2', t: 'Kelime Savaşı', hp: 80, en: 'Kalfa', ico: '👦', diff: 'Orta' }] },
-    { id: 'r1', name: 'İletişim Vadisi', desc: 'Sözcüklerin Gücü', x: 30, y: 60, type: 'iletisim', unlockC: 'prince', levels: [{ id: 'l3', t: 'Sözlü Atışma', hp: 120, en: 'Hatip', ico: '🗣️', diff: 'Kolay' }, { id: 'l4', t: 'Kod Çözme', hp: 150, en: 'Şifreci', ico: '🧩', diff: 'Orta' }, { id: 'b1', t: 'Büyük İletişimci', hp: 300, en: 'İletişim Uzmanı', ico: '📡', diff: 'Zor', isBoss: true }] },
-    { id: 'r2', name: 'Hikaye Ormanı', desc: 'Olayların Merkezi', x: 50, y: 40, type: 'hikaye', unlockC: 'modern', levels: [{ id: 'l5', t: 'Olay Örgüsü', hp: 200, en: 'Kurgucu', ico: '📝', diff: 'Orta' }, { id: 'l6', t: 'Karakter Analizi', hp: 250, en: 'Eleştirmen', ico: '🧐', diff: 'Zor' }, { id: 'b2', t: 'Hikaye Anlatıcısı', hp: 500, en: 'Dede Korkut', ico: '👴', diff: 'Boss', isBoss: true }] },
-    { id: 'r3', name: 'Şiir Dağı', desc: 'Duyguların Zirvesi', x: 70, y: 30, type: 'siir', unlockC: 'divan', levels: [{ id: 'l7', t: 'Kafiye Bulmaca', hp: 350, en: 'Şair', ico: '✍️', diff: 'Zor' }, { id: 'l8', t: 'Aruz Vezni', hp: 400, en: 'Üstad', ico: '📜', diff: 'Çok Zor' }, { id: 'b3', t: 'Şairler Sultanı', hp: 700, en: 'Baki', ico: '👳', diff: 'Boss', isBoss: true }] },
-    { id: 'r4', name: 'Efsaneler Arenası', desc: 'Son Meydan Okuma', x: 90, y: 15, type: 'all', unlockC: 'king', levels: [{ id: 'l9', t: 'Karışık Soru', hp: 600, en: 'Bilge', ico: '🧙', diff: 'Zor' }, { id: 'b4', t: 'Cehalet Kalesi', hp: 1000, en: 'Cehalet Canavarı', ico: '🐲', diff: 'Final Boss', isBoss: true }] },
-];
-
-const expandedQPool = { ...qPool };
-
-// --- YARDIMCI FONKSİYONLAR ---
 const calcStats = (p: Player | null) => {
     if (!p) return { atk: 0, maxHp: 100 };
     let atk = p.baseAtk + (p.lvl * 5);
@@ -164,7 +171,6 @@ const shuffleQuestions = (qs: Question[]) => {
     });
 };
 
-// --- ANA COMPONENT ---
 export default function Game() {
   const [device, setDevice] = useState<'pc' | 'mobile' | null>(null);
   const [scale, setScale] = useState(1);
@@ -175,7 +181,6 @@ export default function Game() {
   const [authName, setAuthName] = useState('');
   const [authPass, setAuthPass] = useState('');
   const [player, setPlayer] = useState<Player | null>(null);
-
   const [isMuted, setIsMuted] = useState(false);
   
   const pStats = calcStats(player);
@@ -192,7 +197,7 @@ export default function Game() {
   const [playerSide, setPlayerSide] = useState<'p1' | 'p2' | null>(null);
   const [turn, setTurn] = useState<'p1' | 'p2' | 'resolving'>('p1');
   const [isBotMatch, setIsBotMatch] = useState(false);
-  const [botDifficulty, setBotDifficulty] = useState({ speed: 5000, acc: 0.5, name: 'Acemi Bot', itemLvl: 0 });
+  const [botDifficulty, setBotDifficulty] = useState({ speed: 3000, acc: 0.5, name: 'Acemi Bot', itemLvl: 0 });
 
   const [battle, setBattle] = useState<{
     active: boolean; 
@@ -212,18 +217,18 @@ export default function Game() {
   const [userRank, setUserRank] = useState<number | null>(null);
   const [arenaSearching, setArenaSearching] = useState(false);
 
-  // --- SES SİSTEMİ (EN HIZLI & GÜVENİLİR CDN) ---
+  // --- PROFESYONEL SES SİSTEMİ (Gecikmesiz) ---
   const playSound = (type: 'click' | 'correct' | 'wrong' | 'win') => {
     if (isMuted) return;
     const sounds = {
-        'click': 'https://cdn.pixabay.com/audio/2022/03/24/audio_78c2cb5739.mp3', // Hafif tık
-        'correct': 'https://cdn.pixabay.com/audio/2021/08/04/audio_12b0c7443c.mp3', // Güzel bir "Ting"
-        'wrong': 'https://cdn.pixabay.com/audio/2021/08/04/audio_c6ccf3232f.mp3', // Tok bir "Hata" sesi
-        'win': 'https://cdn.pixabay.com/audio/2021/08/09/audio_88447e769f.mp3' // Zafer
+        'click': 'https://cdn.pixabay.com/audio/2022/03/24/audio_78c2cb5739.mp3',
+        'correct': 'https://cdn.pixabay.com/audio/2021/08/04/audio_12b0c7443c.mp3',
+        'wrong': 'https://cdn.pixabay.com/audio/2021/08/04/audio_c6ccf3232f.mp3',
+        'win': 'https://cdn.pixabay.com/audio/2021/08/09/audio_88447e769f.mp3'
     };
     try {
         const audio = new Audio(sounds[type]);
-        audio.volume = 0.5; 
+        audio.volume = 0.5;
         audio.play().catch(() => {});
     } catch (e) {}
   };
@@ -270,7 +275,7 @@ export default function Game() {
   }, [screen, battle.active, battle.timer, turn, playerSide, roomID, battle.isTransitioning]);
 
   useEffect(() => {
-      if (screen === 'battle' && battle.active && battle.isArena && isBotMatch && turn === 'p2' && !battle.isTransitioning) {
+      if (screen === 'battle' && battle.active && battle.isArena && isBotMatch && turn === 'p2') {
           const thinkTime = 3000;
           const botTimer = setTimeout(() => {
               const isCorrect = Math.random() < botDifficulty.acc;
@@ -336,7 +341,7 @@ export default function Game() {
   const handleAuth = () => {
     playSound('click');
     if (!authName || !authPass) return notify("Boş alan bırakma!", "error");
-    const key = `edb_final_v21_${authName}`;
+    const key = `edb_final_v22_${authName}`;
     
     if (authName === "admin" && authPass === "1234") {
         const admin: Player = { name: "ADMIN", pass: "1234", hp: 9999, maxHp: 9999, gold: 99999, xp: 0, maxXp: 100, lvl: 99, baseAtk: 999, inventory: [], equipped: {wep:null,arm:null,acc:null}, jokers: {'5050':99,'heal':99,'skip':99,'time':99}, mistakes: [], score: 9999, unlockedRegions: ['tut','r1','r2','r3','r4'], regionProgress: {'tut':2,'r1':4,'r2':4,'r3':4,'r4':3}, unlockedCostumes: Object.keys(costumeDB), currentCostume: 'default', tutorialSeen: true };
@@ -362,7 +367,7 @@ export default function Game() {
 
   const saveGame = (p: Player) => {
     if(p.name !== "ADMIN") {
-        localStorage.setItem(`edb_final_v21_${p.name}`, JSON.stringify(p));
+        localStorage.setItem(`edb_final_v22_${p.name}`, JSON.stringify(p));
         update(ref(db, 'users/' + p.name), { score: p.score });
     }
     setPlayer({...p});
@@ -467,6 +472,7 @@ export default function Game() {
         playSound('win');
         np.gold += 100;
         
+        // --- BÖLÜM GEÇME MANTIĞI (DÜZELTİLDİ) ---
         if (nb.region && nb.level) {
             const currentProgress = np.regionProgress[nb.region.id] || 0;
             const levelIndex = nb.region.levels.findIndex(l => l.id === nb.level!.id);
@@ -507,7 +513,37 @@ export default function Game() {
   const buyItem = (id:string) => { playSound('click'); const it=itemDB[id]; if(player!.gold>=it.cost){let np={...player!}; np.gold-=it.cost; if(it.type==='joker') np.jokers[it.jokerId!]=(np.jokers[it.jokerId!]||0)+1; else np.inventory.push({...it, uid:Date.now()}); saveGame(np); notify("Satın Alındı!", "success");}else notify("Para Yetersiz!", "error"); };
   const equipItem = (idx:number) => { playSound('click'); if(!player) return; const np={...player}; const it=np.inventory[idx]; if (it.type === 'joker') return notify("Jokerler kuşanılamaz!", "error"); const type = it.type as 'wep' | 'arm' | 'acc'; if(np.equipped[type]) np.inventory.push(np.equipped[type]!); np.equipped[type]=it; np.inventory.splice(idx,1); saveGame(np); notify("Kuşanıldı", "success"); };
   const unequipItem = (type: 'wep' | 'arm' | 'acc') => { playSound('click'); if(!player || !player.equipped[type]) return; const np = { ...player }; np.inventory.push(np.equipped[type]!); np.equipped[type] = null; saveGame(np); notify("Çıkarıldı", "success"); };
-  const useJoker = (type: string) => { playSound('click'); if(!player || battle.timer<=0 || (player.jokers[type]||0)<=0) return; if(battle.isArena && !isBotMatch) return notify("Arenada Joker Yasak!", "error"); let np = {...player}; np.jokers[type]--; if(type==='heal') np.hp = Math.min(np.hp+50, calcStats(np).maxHp); if(type==='skip') { setBattle(prev=>({...prev, enemyHp:0})); setTimeout(()=>handleAnswer(true), 100); } if(type==='time') setBattle(prev=>({...prev, timer:prev.timer+10})); if(type==='5050') setBattle(prev=>({...prev, fiftyUsed:true})); saveGame(np); };
+  
+  // --- JOKER DÜZELTMESİ ---
+  const useJoker = (type: string) => { 
+      playSound('click'); 
+      if(!player || !battle.active) return; // Süre kontrolünü kaldırdım, savaş aktifse kullanılabilir
+      if((player.jokers[type]||0)<=0) return notify("Jokerin Kalmadı!", "error");
+      
+      let np = {...player}; 
+      np.jokers[type]--; 
+      
+      if(type==='heal') {
+          np.hp = Math.min(np.hp+50, calcStats(np).maxHp);
+          notify("Can Yenilendi! (+50)", "success");
+      }
+      if(type==='skip') { 
+          setBattle(prev=>({...prev, enemyHp:0})); 
+          setTimeout(()=>handleAnswer(true), 100); 
+          notify("Bölüm Geçildi!", "success");
+      } 
+      if(type==='time') {
+          setBattle(prev=>({...prev, timer:prev.timer+20})); // +20 Saniye
+          notify("Ek Süre Eklendi!", "success");
+      }
+      if(type==='5050') {
+          setBattle(prev=>({...prev, fiftyUsed:true})); 
+          notify("%50 Kullanıldı!", "success");
+      }
+      
+      saveGame(np); 
+  };
+
   const sellItem = (idx:number) => { playSound('click'); if(!player)return; const np={...player}; np.gold+=np.inventory[idx].cost/2; np.inventory.splice(idx,1); saveGame(np); notify("Satıldı", "success"); };
 
   const isArenaUnlocked = () => {
@@ -627,17 +663,17 @@ export default function Game() {
 
         <div style={{flex:1, position:'relative', overflow: device==='mobile'?'auto':'hidden', padding: screen === 'map' ? 0 : (device==='mobile'?'10px':'40px')}}>
             {screen === 'menu' && (
-                <div style={{display:'grid', gridTemplateColumns: device==='mobile'?'1fr':'350px 1fr', height:'100%', gap:'20px'}}>
-                    <div style={{textAlign:'center', borderRight: device==='mobile'?'none':'1px solid #333', paddingRight: device==='mobile'?'0':'40px', borderBottom: device==='mobile'?'1px solid #333':'none', paddingBottom: device==='mobile'?'20px':'0'}}>
-                        <div style={{fontSize: device==='mobile'?'100px':'170px', cursor:'pointer'}} onClick={()=>setShowWardrobe(true)}>{costumeDB[player!.currentCostume].icon}</div>
-                        <h2 style={{fontSize: device==='mobile'?'30px':'40px', color:'#00eaff', margin:'10px 0'}}>{player?.name}</h2>
-                        <div style={{textAlign:'left', background:'#222', padding:'20px', borderRadius:'20px', fontSize: device==='mobile'?'16px':'20px', lineHeight:'1.5', color:'white'}}><div>⚔️ Güç: {pStats.atk}</div><div>🛡️ Can: {pStats.maxHp}</div><div>🏆 Skor: {player?.score}</div></div>
+                <div style={{display:'flex', flexDirection: device==='mobile'?'column':'row', gap:'40px', height:'100%', alignItems:'center', justifyContent:'center'}}>
+                    <div style={{textAlign:'center', width: device==='mobile'?'100%':'350px'}}>
+                        <div style={{fontSize: device==='mobile'?'100px':'180px', cursor:'pointer'}} onClick={()=>setShowWardrobe(true)}>{costumeDB[player!.currentCostume].icon}</div>
+                        <h2 style={{fontSize: device==='mobile'?'30px':'45px', color:'#00eaff', margin:'10px 0'}}>{player?.name}</h2>
+                        <div style={{background:'#222', padding:'20px', borderRadius:'20px', fontSize: device==='mobile'?'16px':'22px', border:'1px solid #444'}}><div>⚔️ Güç: {pStats.atk}</div><div>🛡️ Can: {pStats.maxHp}</div><div>🏆 Skor: {player?.score}</div></div>
                     </div>
-                    <div style={{display:'grid', gridTemplateColumns: device==='mobile'?'1fr 1fr':'1fr 1fr', gap:'20px', paddingLeft: device==='mobile'?'0':'40px', alignContent:'center'}}>
+                    <div style={{display:'grid', gridTemplateColumns: device==='mobile'?'1fr 1fr':'repeat(2, 1fr)', gap:'25px', width: device==='mobile'?'100%':'600px'}}>
                         {[{id:'map',t:'MACERA',i:'🗺️'}, {id:'arena',t:'ARENA',i:'⚔️',check:true}, {id:'shop',t:'MARKET',i:'🛒'}, {id:'inv',t:'ÇANTA',i:'🎒'}, {id:'lib',t:'BİLGİ',i:'📚'}, {id:'mistake',t:'HATA',i:'📜'}].map(m => (
-                            <div key={m.id} onClick={()=>{ playSound('click'); if(m.check && !isArenaUnlocked()) return notify("Arena için Son Boss'u (Cehalet Kalesi) yenmelisin!", "error"); if(m.id==='arena') fetchLeaderboard(); setScreen(m.id as any); }} style={{background:'#1a1a20', border:'2px solid #333', borderRadius:'20px', height: device==='mobile'?'120px':'180px', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', cursor:'pointer', transition:'0.2s', color:'white', opacity: (m.check && !isArenaUnlocked()) ? 0.3 : 1}}>
-                                <div style={{fontSize: device==='mobile'?'40px':'70px'}}>{(m.check && !isArenaUnlocked()) ? '🔒' : m.i}</div>
-                                <div style={{fontSize: device==='mobile'?'16px':'24px', fontWeight:'bold', marginTop:'10px'}}>{m.t}</div>
+                            <div key={m.id} onClick={()=>{ playSound('click'); if(m.check && !isArenaUnlocked()) return notify("Arena için Son Boss'u (Cehalet Kalesi) yenmelisin!", "error"); if(m.id==='arena') fetchLeaderboard(); setScreen(m.id as any); }} style={{background:'#1a1a20', border:'2px solid #333', borderRadius:'20px', height: '160px', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', cursor:'pointer', transition:'0.2s', color:'white', opacity: (m.check && !isArenaUnlocked()) ? 0.3 : 1}}>
+                                <div style={{fontSize:'60px'}}>{(m.check && !isArenaUnlocked()) ? '🔒' : m.i}</div>
+                                <div style={{fontSize:'22px', fontWeight:'bold', marginTop:'10px'}}>{m.t}</div>
                             </div>
                         ))}
                     </div>
@@ -647,7 +683,7 @@ export default function Game() {
             {screen === 'map' && (<div style={{height:'100%', width: '100%', position:'relative', background:'url(https://images.unsplash.com/photo-1524661135-423995f22d0b?q=80&w=1000) center/cover', overflow:'hidden', boxShadow:'inset 0 0 100px black'}}><button style={{...dangerBtnStyle, position:'absolute', top:'20px', right:'20px', zIndex:10}} onClick={()=>setScreen('menu')}>GERİ</button><svg style={{position:'absolute', inset:0, width:'100%', height:'100%', pointerEvents:'none'}}>{regions.map((r, i) => {if (i === regions.length - 1) return null;const next = regions[i+1];const unlocked = player!.unlockedRegions.includes(next.id);return <line key={i} x1={`${r.x}%`} y1={`${r.y}%`} x2={`${next.x}%`} y2={`${next.y}%`} stroke={unlocked?'#333':'#888'} strokeWidth="4" strokeDasharray="10" />})}</svg>{regions.map((r) => {const unlocked = player!.unlockedRegions.includes(r.id);return (<div key={r.id} onClick={()=>handleRegionClick(r)} style={{position:'absolute', left:`${r.x}%`, top:`${r.y}%`, transform:'translate(-50%, -50%)', cursor: unlocked ? 'pointer' : 'not-allowed', textAlign:'center', zIndex:5, opacity: unlocked ? 1 : 0.6, filter: unlocked ? 'none' : 'grayscale(100%)'}}><div style={{fontSize: device==='mobile'?'40px':'50px', background: unlocked ? '#f4e4bc' : '#555', width: device==='mobile'?'70px':'90px', height: device==='mobile'?'70px':'90px', borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', border:'4px solid #5c4033', boxShadow: unlocked ? '0 0 20px #8b4513' : 'none', transition:'0.3s', animation: unlocked ? 'pop 2s infinite alternate' : 'none', color:'black'}}>{unlocked ? (r.type==='iletisim'?'📡':r.type==='hikaye'?'🌲':r.type==='siir'?'🎭':r.id==='tut'?'🎓':'🐲') : '🔒'}</div><div style={{background:'rgba(255,255,255,0.9)', padding:'5px 15px', borderRadius:'10px', marginTop:'10px', color:'black', fontWeight:'bold', border:'1px solid #5c4033', whiteSpace:'nowrap', fontSize: device==='mobile'?'12px':'16px'}}>{r.name}</div></div>)})})</div>)}
 
             {screen === 'battle' && (battle.region || battle.isArena) && (
-                <div style={{height:'100%', display:'flex', flexDirection:'column', background:`linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.8)), url(${battle.isArena ? (battle.region?.bg || FALLBACK_ARENA_BG) : (battle.region?.bg || battle.level?.ico)}) center/cover`}}>
+                <div style={{height:'100%', display:'flex', flexDirection:'column', background:`linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.8)), url(${battle.isArena ? (battle.region?.bg || "https://images.unsplash.com/photo-1516912481808-3406841bd33c?q=80&w=1000") : (battle.region?.bg || battle.level?.ico)}) center/cover`}}>
                     <div style={{flex: device === 'mobile' ? '0 0 auto' : 2, position:'relative', display: device === 'mobile' ? 'flex' : 'grid', flexDirection: device === 'mobile' ? 'column' : 'row', gridTemplateColumns: '1fr 1fr 1fr', justifyContent: 'center', alignItems: device === 'mobile' ? 'center' : 'end', padding: device === 'mobile' ? '10px 0' : '0 50px 20px 50px', gap: device === 'mobile' ? '5px' : '0'}}>
                         {battle.dmgText && <div style={{position:'absolute', left:'50%', top:'30%', fontSize:'80px', fontWeight:'bold', color:battle.dmgText.color, animation:'flyUp 0.8s forwards', zIndex:99}}> -{battle.dmgText.val} </div>}
                         <button style={{...dangerBtnStyle, fontSize:'14px', position:'absolute', top:0, left:0}} onClick={() => setConfirmAction('surrender')}>{battle.isArena ? '🏳️ TESLİM OL' : '❌ ÇIK'}</button>
@@ -657,6 +693,7 @@ export default function Game() {
                             <div style={{background:'rgba(0,0,0,0.7)', padding:'5px 15px', borderRadius:'10px', marginTop:'5px', color:'#ffcc00', fontWeight:'bold', fontSize:'24px'}}>{battle.level?.en}</div>
                         </div>
                         <div style={{display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', order: 2, paddingBottom: device==='mobile'?'0':'50px'}}>
+                            {device === 'pc' && !battle.isArena && (<div style={{display:'flex', gap:'25px', marginBottom:'10px', justifyContent:'center'}}>{[{id:'5050',i:'½'},{id:'heal',i:'❤️'},{id:'time',i:'⏳'},{id:'skip',i:'⏩'}].map(j=>(<button key={j.id} onClick={()=>useJoker(j.id)} style={{width:'90px', height:'90px', borderRadius:'50%', fontSize:'45px', background:'#222', border:'3px solid #666', cursor:'pointer', position:'relative', color:'white', display:'flex', alignItems:'center', justifyContent:'center'}}>{j.i}<span style={{position:'absolute', bottom:-5, right:-5, background:'red', borderRadius:'50%', width:'30px', height:'30px', fontSize:'16px', lineHeight:'30px', color:'white', border:'2px solid white'}}>{player!.jokers[j.id]||0}</span></button>))}</div>)}
                             <h1 style={{fontSize: device==='mobile'?'30px':'80px', color:'rgba(255,255,255,0.1)', fontWeight:'bold', margin:0}}>VS</h1>
                             {battle.isArena && turn === 'p2' && <div style={{color:'#ffcc00', fontSize:'20px', animation:'pulse 1s infinite'}}>BOT DÜŞÜNÜYOR...</div>}
                         </div>
@@ -667,6 +704,7 @@ export default function Game() {
                         </div>
                     </div>
                     <div style={{flex:1, background:'rgba(10,10,15,0.95)', borderTop:'4px solid #00eaff', padding:'20px', display:'flex', flexDirection:'column'}}>
+                        {device === 'mobile' && !battle.isArena && (<div style={{display:'flex', gap:'10px', justifyContent:'center', marginBottom:'10px'}}>{[{id:'5050',i:'½'},{id:'heal',i:'❤️'},{id:'time',i:'⏳'},{id:'skip',i:'⏩'}].map(j=>(<button key={j.id} onClick={()=>useJoker(j.id)} style={{width:'50px', height:'50px', borderRadius:'50%', fontSize:'24px', background:'#222', border:'2px solid #555', cursor:'pointer', position:'relative', color:'white'}}>{j.i}<span style={{position:'absolute', bottom:0, right:0, background:'red', borderRadius:'50%', width:'18px', height:'18px', fontSize:'10px', lineHeight:'18px', color:'white'}}>{player!.jokers[j.id]||0}</span></button>))}</div>)}
                         <div style={{height:'10px', background:'#333', borderRadius:'10px', overflow:'hidden', marginBottom:'15px'}}>
                             <div style={{width:`${(battle.timer/20)*100}%`, height:'100%', background: battle.timer<5?'red':'#00eaff', transition:'1s linear'}}></div>
                         </div>
@@ -685,30 +723,28 @@ export default function Game() {
             )}
 
             {(screen==='shop'||screen==='inv'||screen==='lib'||screen==='mistake'||screen==='arena') && (
-                <div style={{height:'100%', overflowY:'auto'}}>
+                <div style={{height:'100%', overflowY:'auto', padding:'20px'}}>
                     <div style={{display:'flex', justifyContent:'space-between', marginBottom:'30px', borderBottom:'2px solid #333', paddingBottom:'20px'}}>
                         <h1 style={{fontSize:'40px', margin:0}}>{screen==='inv'?'ÇANTA':screen==='lib'?'KÜTÜPHANE':screen==='arena'?'ARENA':screen==='mistake'?'HATA':'MARKET'}</h1>
                         {screen==='shop' && <div style={{display:'flex', gap:'20px'}}>{['buy','joker','sell'].map(m=><button key={m} onClick={()=>setShopMode(m as any)} style={{...btnStyle, background:shopMode===m?'#00eaff':'#333', color:shopMode===m?'black':'white'}}>{m.toUpperCase()}</button>)}</div>}
                         <button style={{...dangerBtnStyle, fontSize:'20px', padding:'10px 30px'}} onClick={()=>setScreen('menu')}>GERİ</button>
                     </div>
                     {screen==='shop' && (
-                        <div style={{display:'grid', gridTemplateColumns: device==='mobile'?'1fr 1fr':'repeat(4, 1fr)', gap:'20px'}}>
-                            {shopMode==='buy' && Object.keys(itemDB).filter(k=>itemDB[k].type!=='joker').map(k=>(<div key={k} style={{background:'#1a1a20', border:'2px solid #333', borderRadius:'20px', padding:'20px', textAlign:'center', color:'white'}}><div style={{fontSize:'40px'}}>{itemDB[k].icon}</div><h3 style={{fontSize:'16px'}}>{itemDB[k].name}</h3><div style={{color:'#aaa', marginBottom:'10px'}}>+{itemDB[k].val} Güç</div><button style={{...btnStyle, width:'100%', background:'white', color:'black', justifyContent:'center'}} onClick={()=>buyItem(k)}>{itemDB[k].cost} G</button></div>))}
-                            {shopMode==='joker' && Object.keys(itemDB).filter(k=>itemDB[k].type==='joker').map(k=>(<div key={k} style={{background:'#1a1a20', border:'2px solid #333', borderRadius:'20px', padding:'20px', textAlign:'center', color:'white'}}><div style={{fontSize:'40px'}}>{itemDB[k].icon}</div><h3 style={{fontSize:'16px'}}>{itemDB[k].name}</h3><div style={{color:'#aaa', marginBottom:'10px'}}>Tek Seferlik</div><button style={{...btnStyle, width:'100%', background:'#00ff66', color:'black', justifyContent:'center'}} onClick={()=>buyItem(k)}>{itemDB[k].cost} G</button></div>))}
-                            {shopMode==='sell' && player!.inventory.map((it,i)=>(<div key={i} style={{background:'#1a1a20', border:'2px solid #333', borderRadius:'20px', padding:'20px', textAlign:'center', color:'white'}}><div style={{fontSize:'40px'}}>{it.icon}</div><h3 style={{fontSize:'20px'}}>{it.name}</h3><button style={{...btnStyle, width:'100%', background:'#ffcc00', color:'black', justifyContent:'center'}} onClick={()=>sellItem(i)}>SAT ({it.cost/2})</button></div>))}
+                        <div style={{display:'grid', gridTemplateColumns: device==='mobile'?'1fr 1fr':'repeat(auto-fill, minmax(220px, 1fr))', gap:'20px'}}>
+                            {shopMode==='buy' && Object.keys(itemDB).filter(k=>itemDB[k].type!=='joker').map(k=>(<div key={k} style={cardStyle}><div style={{fontSize:'50px'}}>{itemDB[k].icon}</div><h3 style={{fontSize:'18px', textAlign:'center'}}>{itemDB[k].name}</h3><div style={{color:'#aaa', fontWeight:'bold'}}>{itemDB[k].type==='wep'?'⚔️ +'+itemDB[k].val+' SALDIRI':itemDB[k].type==='arm'?'🛡️ +'+itemDB[k].val+' CAN':'🎯 +'+itemDB[k].val+' KRİTİK'}</div><button style={{...btnStyle, width:'100%', background:'white', color:'black', justifyContent:'center'}} onClick={()=>buyItem(k)}>{itemDB[k].cost} G</button></div>))}
+                            {shopMode==='joker' && Object.keys(itemDB).filter(k=>itemDB[k].type==='joker').map(k=>(<div key={k} style={cardStyle}><div style={{fontSize:'50px'}}>{itemDB[k].icon}</div><h3 style={{fontSize:'18px', textAlign:'center'}}>{itemDB[k].name}</h3><div style={{color:'#aaa', marginBottom:'10px'}}>Tek Seferlik</div><button style={{...btnStyle, width:'100%', background:'#00ff66', color:'black', justifyContent:'center'}} onClick={()=>buyItem(k)}>{itemDB[k].cost} G</button></div>))}
+                            {shopMode==='sell' && player!.inventory.map((it,i)=>(<div key={i} style={cardStyle}><div style={{fontSize:'50px'}}>{it.icon}</div><h3 style={{fontSize:'18px'}}>{it.name}</h3><button style={{...btnStyle, width:'100%', background:'#ffcc00', color:'black', justifyContent:'center'}} onClick={()=>sellItem(i)}>SAT ({it.cost/2})</button></div>))}
                         </div>
                     )}
                     {screen==='inv' && (
                         <div style={{display:'flex', flexDirection: device==='mobile'?'column':'row', gap:'40px'}}>
                             <div style={{width: device==='mobile'?'100%':'300px'}}>
-                                <h3 style={{color:'#00eaff', textAlign:'center'}}>KUŞANILANLAR</h3>
+                                <h3 style={{color:'#00eaff', textAlign:'center', fontSize:'24px'}}>KUŞANILANLAR</h3>
                                 <div style={{display:'flex', gap:'10px', justifyContent:'center'}}>
-                                    <div onClick={() => unequipItem('wep')} style={{width:'80px', height:'80px', border:'2px solid #444', borderRadius:'15px', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'24px', cursor:'pointer', background: player?.equipped.wep ? '#1a1a20' : 'transparent', color:'white'}}>{player?.equipped.wep ? player.equipped.wep.icon : 'W'}</div>
-                                    <div onClick={() => unequipItem('arm')} style={{width:'80px', height:'80px', border:'2px solid #444', borderRadius:'15px', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'24px', cursor:'pointer', background: player?.equipped.arm ? '#1a1a20' : 'transparent', color:'white'}}>{player?.equipped.arm ? player.equipped.arm.icon : 'A'}</div>
-                                    <div onClick={() => unequipItem('acc')} style={{width:'80px', height:'80px', border:'2px solid #444', borderRadius:'15px', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'24px', cursor:'pointer', background: player?.equipped.acc ? '#1a1a20' : 'transparent', color:'white'}}>{player?.equipped.acc ? player.equipped.acc.icon : 'C'}</div>
+                                    {['wep','arm','acc'].map(t=>(<div key={t} onClick={() => unequipItem(t as any)} style={{width:'80px', height:'80px', border:'2px solid #444', borderRadius:'15px', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'30px', cursor:'pointer', background: player?.equipped[t as 'wep'] ? '#1a1a20' : 'transparent', color:'white'}}>{player?.equipped[t as 'wep'] ? player.equipped[t as 'wep']!.icon : (t==='wep'?'⚔️':t==='arm'?'🛡️':'💍')}</div>))}
                                 </div>
                             </div>
-                            <div style={{flex:1, display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:'20px', alignContent:'start'}}>{player!.inventory.map((it,i)=>(<div key={i} style={{background:'#222', border:'2px solid #555', padding:'10px', borderRadius:'10px', textAlign:'center', color:'white'}}><div style={{fontSize:'30px'}}>{it.icon}</div><div style={{fontSize:'14px', color:'#aaa'}}>+{it.val} Güç</div><button style={{...btnStyle, width:'100%', marginTop:'5px', fontSize:'12px', padding:'5px', justifyContent:'center'}} onClick={()=>equipItem(i)}>KUŞAN</button></div>))}</div>
+                            <div style={{flex:1, display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(180px, 1fr))', gap:'20px', alignContent:'start'}}>{player!.inventory.map((it,i)=>(<div key={i} style={{background:'#222', border:'2px solid #555', padding:'15px', borderRadius:'15px', textAlign:'center', color:'white', display:'flex', flexDirection:'column', gap:'10px'}}><div style={{fontSize:'40px'}}>{it.icon}</div><div style={{fontWeight:'bold'}}>{it.name}</div><div style={{fontSize:'14px', color:'#aaa'}}>{it.type==='wep'?'⚔️ +'+it.val:it.type==='arm'?'🛡️ +'+it.val:'🎯 +'+it.val}</div><button style={{...btnStyle, width:'100%', fontSize:'14px', padding:'5px', justifyContent:'center'}} onClick={()=>equipItem(i)}>KUŞAN</button></div>))}</div>
                         </div>
                     )}
                     {screen === 'lib' && (
