@@ -7,70 +7,65 @@ import { ref, set, onValue, update, push, get, remove, query, orderByChild, limi
 // --- SABİT AYARLAR ---
 const BASE_WIDTH = 1200;
 const BASE_HEIGHT = 850;
+const FALLBACK_ARENA_BG = "https://images.unsplash.com/photo-1516912481808-3406841bd33c?q=80&w=1000";
 
-// --- TASARIM ---
+// --- ESKİ TEMA (KLASİK NEON) ---
 const containerStyle = {
     height: '100vh',
     display: 'flex',
     flexDirection: 'column' as const,
-    background: 'radial-gradient(circle, #1a1a20 0%, #000000 100%)',
+    background: '#050505', // Orijinal koyu siyah
     color: 'white',
     fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
     overflow: 'hidden'
 };
 
 const btnStyle = {
-    padding: '12px 24px',
-    fontSize: '18px',
+    padding: '10px 20px',
+    fontSize: '16px',
     cursor: 'pointer',
-    borderRadius: '12px',
-    border: '1px solid rgba(255,255,255,0.1)',
-    background: 'linear-gradient(145deg, #333, #222)',
+    borderRadius: '10px',
+    border: 'none',
+    background: '#333',
     color: 'white',
     fontWeight: 'bold',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: '10px',
-    transition: 'all 0.2s ease',
-    boxShadow: '0 4px 6px rgba(0,0,0,0.5)',
-    margin: '5px'
+    gap: '5px',
+    transition: '0.2s',
+    boxShadow: '0 4px 6px rgba(0,0,0,0.3)'
 };
 
 const actionBtnStyle = {
-    ...btnStyle,
-    background: 'linear-gradient(145deg, #00eaff, #008c99)',
-    color: 'black',
-    border: 'none',
-    boxShadow: '0 0 15px rgba(0, 234, 255, 0.3)',
+    padding: '15px 30px',
     fontSize: '20px',
-    padding: '15px 40px'
+    cursor: 'pointer',
+    borderRadius: '15px',
+    border: 'none',
+    background: '#00eaff', // Neon Mavi
+    color: 'black',
+    fontWeight: 'bold',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '10px',
+    transition: 'transform 0.1s',
+    boxShadow: '0 0 15px rgba(0, 234, 255, 0.4)'
 };
 
 const dangerBtnStyle = {
     ...btnStyle,
-    background: 'linear-gradient(145deg, #ff0055, #990033)',
-    boxShadow: '0 0 10px rgba(255, 0, 85, 0.3)'
+    background: '#ff0055', // Neon Kırmızı
+    color: 'white',
+    boxShadow: '0 0 10px rgba(255, 0, 85, 0.4)'
 };
 
 const successBtnStyle = {
     ...btnStyle,
-    background: 'linear-gradient(145deg, #00ff66, #00993d)',
+    background: '#00ff66', // Neon Yeşil
     color: 'black',
-    boxShadow: '0 0 10px rgba(0, 255, 102, 0.3)'
-};
-
-const cardStyle = {
-    background: 'rgba(255, 255, 255, 0.05)',
-    backdropFilter: 'blur(10px)',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
-    borderRadius: '20px',
-    padding: '25px',
-    display: 'flex',
-    flexDirection: 'column' as const,
-    alignItems: 'center',
-    gap: '15px',
-    boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.37)'
+    boxShadow: '0 0 10px rgba(0, 255, 102, 0.4)'
 };
 
 const NotificationComponent = () => null; 
@@ -89,7 +84,7 @@ type Player = {
     unlockedCostumes: string[]; currentCostume: string; tutorialSeen: boolean;
 };
 
-// --- VERİTABANI ---
+// --- OYUN VERİTABANI ---
 const itemDB: { [key: string]: Item } = {
     'w1': { id: 'w1', name: 'Paslı Kalem', type: 'wep', val: 10, cost: 50, icon: '✏️' },
     'w2': { id: 'w2', name: 'Divit Uç', type: 'wep', val: 25, cost: 150, icon: '✒️' },
@@ -106,8 +101,8 @@ const itemDB: { [key: string]: Item } = {
 const costumeDB: { [key: string]: Costume } = {
     'default': { id: 'default', name: 'Öğrenci', icon: '🧑‍🎓' },
     'prince': { id: 'prince', name: 'Şair Prens', icon: '🤴' },
-    'halk': { id: 'halk', name: 'Halk Ozanı', icon: '🎸' },
     'divan': { id: 'divan', name: 'Divan Şairi', icon: '👳' },
+    'halk': { id: 'halk', name: 'Halk Ozanı', icon: '🎸' },
     'modern': { id: 'modern', name: 'Modern Yazar', icon: '🕴️' },
     'king': { id: 'king', name: 'Edebiyat Kralı', icon: '👑' },
 };
@@ -125,7 +120,7 @@ const qPool: { [key: string]: Question[] } = {
         { q: "Hangisi 'Durum Hikayesi' yazarıdır?", o: ["Ömer Seyfettin", "Sait Faik Abasıyanık", "Reşat Nuri", "Yakup Kadri"], a: 1 },
         { q: "İstiklal Marşı hangi vezinle yazılmıştır?", o: ["Hece", "Aruz", "Serbest", "Syllabic"], a: 1 }
     ],
-    hikaye: [], siir: [], all: []
+    hikaye: [], siir: [], all: [] 
 };
 qPool.all = [...qPool.iletisim]; 
 qPool.hikaye = [...qPool.iletisim];
@@ -140,14 +135,14 @@ const libraryDB = [
 const regions: Region[] = [
     { id: 'tut', name: 'Başlangıç Kampı', desc: 'Eğitim Alanı', x: 10, y: 80, type: 'iletisim', unlockC: 'default', levels: [{ id: 'l1', t: 'İlk Adım', hp: 50, en: 'Çırak', ico: '👶', diff: 'Kolay' }, { id: 'l2', t: 'Kelime Savaşı', hp: 80, en: 'Kalfa', ico: '👦', diff: 'Orta' }] },
     { id: 'r1', name: 'İletişim Vadisi', desc: 'Sözcüklerin Gücü', x: 30, y: 60, type: 'iletisim', unlockC: 'prince', levels: [{ id: 'l3', t: 'Sözlü Atışma', hp: 120, en: 'Hatip', ico: '🗣️', diff: 'Kolay' }, { id: 'l4', t: 'Kod Çözme', hp: 150, en: 'Şifreci', ico: '🧩', diff: 'Orta' }, { id: 'b1', t: 'Büyük İletişimci', hp: 300, en: 'İletişim Uzmanı', ico: '📡', diff: 'Zor', isBoss: true }] },
-    { id: 'r2', name: 'Hikaye Ormanı', desc: 'Olayların Merkezi', x: 50, y: 40, type: 'hikaye', unlockC: 'halk', levels: [{ id: 'l5', t: 'Olay Örgüsü', hp: 200, en: 'Kurgucu', ico: '📝', diff: 'Orta' }, { id: 'l6', t: 'Karakter Analizi', hp: 250, en: 'Eleştirmen', ico: '🧐', diff: 'Zor' }, { id: 'b2', t: 'Hikaye Anlatıcısı', hp: 500, en: 'Dede Korkut', ico: '👴', diff: 'Boss', isBoss: true }] },
+    { id: 'r2', name: 'Hikaye Ormanı', desc: 'Olayların Merkezi', x: 50, y: 40, type: 'hikaye', unlockC: 'modern', levels: [{ id: 'l5', t: 'Olay Örgüsü', hp: 200, en: 'Kurgucu', ico: '📝', diff: 'Orta' }, { id: 'l6', t: 'Karakter Analizi', hp: 250, en: 'Eleştirmen', ico: '🧐', diff: 'Zor' }, { id: 'b2', t: 'Hikaye Anlatıcısı', hp: 500, en: 'Dede Korkut', ico: '👴', diff: 'Boss', isBoss: true }] },
     { id: 'r3', name: 'Şiir Dağı', desc: 'Duyguların Zirvesi', x: 70, y: 30, type: 'siir', unlockC: 'divan', levels: [{ id: 'l7', t: 'Kafiye Bulmaca', hp: 350, en: 'Şair', ico: '✍️', diff: 'Zor' }, { id: 'l8', t: 'Aruz Vezni', hp: 400, en: 'Üstad', ico: '📜', diff: 'Çok Zor' }, { id: 'b3', t: 'Şairler Sultanı', hp: 700, en: 'Baki', ico: '👳', diff: 'Boss', isBoss: true }] },
     { id: 'r4', name: 'Efsaneler Arenası', desc: 'Son Meydan Okuma', x: 90, y: 15, type: 'all', unlockC: 'king', levels: [{ id: 'l9', t: 'Karışık Soru', hp: 600, en: 'Bilge', ico: '🧙', diff: 'Zor' }, { id: 'b4', t: 'Cehalet Kalesi', hp: 1000, en: 'Cehalet Canavarı', ico: '🐲', diff: 'Final Boss', isBoss: true }] },
 ];
 
 const expandedQPool = { ...qPool };
 
-// --- FONKSİYONLAR ---
+// --- YARDIMCI FONKSİYONLAR ---
 const calcStats = (p: Player | null) => {
     if (!p) return { atk: 0, maxHp: 100 };
     let atk = p.baseAtk + (p.lvl * 5);
@@ -169,6 +164,7 @@ const shuffleQuestions = (qs: Question[]) => {
     });
 };
 
+// --- ANA COMPONENT ---
 export default function Game() {
   const [device, setDevice] = useState<'pc' | 'mobile' | null>(null);
   const [scale, setScale] = useState(1);
@@ -196,7 +192,7 @@ export default function Game() {
   const [playerSide, setPlayerSide] = useState<'p1' | 'p2' | null>(null);
   const [turn, setTurn] = useState<'p1' | 'p2' | 'resolving'>('p1');
   const [isBotMatch, setIsBotMatch] = useState(false);
-  const [botDifficulty, setBotDifficulty] = useState({ speed: 3000, acc: 0.5, name: 'Acemi Bot', itemLvl: 0 });
+  const [botDifficulty, setBotDifficulty] = useState({ speed: 5000, acc: 0.5, name: 'Acemi Bot', itemLvl: 0 });
 
   const [battle, setBattle] = useState<{
     active: boolean; 
@@ -216,35 +212,19 @@ export default function Game() {
   const [userRank, setUserRank] = useState<number | null>(null);
   const [arenaSearching, setArenaSearching] = useState(false);
 
-  // --- YENİ PROFESYONEL SES SİSTEMİ (Gecikmesiz Base64) ---
+  // --- SES SİSTEMİ (EN HIZLI & GÜVENİLİR CDN) ---
   const playSound = (type: 'click' | 'correct' | 'wrong' | 'win') => {
     if (isMuted) return;
-    
-    // Sesler artık direkt kodun içinde, indirme bekleme yok!
     const sounds = {
-        'click': 'data:audio/wav;base64,UklGRiYAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=', // (Placeholder - Kısa Click)
-        // Gerçek MP3 verileri çok uzun olduğu için burada temsili kısa versiyonlar yerine
-        // En hızlı ve güvenilir CDN linklerine geri döndüm AMA bu sefer farklı, çok hızlı bir sunucudan.
-        // Base64 kodun içine gömülünce satır sayısı 10.000'i geçiyor ve editör donuyor.
-        // O yüzden en iyi yöntem: Hızlı sunucudan PRELOAD (ön yükleme) yapmaktır.
-        // Aşağıdaki linkler Google'ın kendi sunucularından, çok hızlıdır.
-    };
-
-    // Ses URL'leri (Google CDN - Çok Hızlı)
-    const audioUrls = {
         'click': 'https://cdn.pixabay.com/audio/2022/03/24/audio_78c2cb5739.mp3', // Hafif tık
         'correct': 'https://cdn.pixabay.com/audio/2021/08/04/audio_12b0c7443c.mp3', // Güzel bir "Ting"
         'wrong': 'https://cdn.pixabay.com/audio/2021/08/04/audio_c6ccf3232f.mp3', // Tok bir "Hata" sesi
         'win': 'https://cdn.pixabay.com/audio/2021/08/09/audio_88447e769f.mp3' // Zafer
     };
-
     try {
-        const audio = new Audio(audioUrls[type]);
-        audio.volume = 0.6;
-        const playPromise = audio.play();
-        if (playPromise !== undefined) {
-            playPromise.catch(() => {});
-        }
+        const audio = new Audio(sounds[type]);
+        audio.volume = 0.5; 
+        audio.play().catch(() => {});
     } catch (e) {}
   };
 
@@ -290,7 +270,7 @@ export default function Game() {
   }, [screen, battle.active, battle.timer, turn, playerSide, roomID, battle.isTransitioning]);
 
   useEffect(() => {
-      if (screen === 'battle' && battle.active && battle.isArena && isBotMatch && turn === 'p2') {
+      if (screen === 'battle' && battle.active && battle.isArena && isBotMatch && turn === 'p2' && !battle.isTransitioning) {
           const thinkTime = 3000;
           const botTimer = setTimeout(() => {
               const isCorrect = Math.random() < botDifficulty.acc;
@@ -303,7 +283,7 @@ export default function Game() {
 
   const handleBotMove = (move: 'correct' | 'wrong') => {
       if (!battle.active) return;
-      const myDmg = calcStats(player!).atk;
+      
       const botStats = botDifficulty;
       let nb = { ...battle };
       let pDmg = 0;
@@ -574,11 +554,11 @@ export default function Game() {
     return (
       <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.95)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:9999}}>
         <NotificationComponent />
-        <div style={{...cardStyle, width: device==='mobile' ? '90%' : '450px', maxWidth: '450px'}}>
+        <div style={{width: device==='mobile' ? '90%' : '450px', maxWidth: '450px', background:'#151515', border:'2px solid #00eaff', padding:'40px', borderRadius:'30px', textAlign:'center', display:'flex', flexDirection:'column', gap:'25px', overflow:'hidden'}}>
           <h1 style={{fontSize: device==='mobile'?'35px':'50px', color:'#00eaff', margin:0, textShadow:'0 0 10px #00eaff'}}>EDEBİYAT<br/>EFSANELERİ V5</h1>
-          <input style={{padding:'15px', borderRadius:'10px', border:'none', background:'rgba(255,255,255,0.1)', color:'white', width:'100%'}} placeholder="Kullanıcı Adı" value={authName} onChange={e=>setAuthName(e.target.value)} />
-          <input style={{padding:'15px', borderRadius:'10px', border:'none', background:'rgba(255,255,255,0.1)', color:'white', width:'100%'}} type="password" placeholder="Şifre" value={authPass} onChange={e=>setAuthPass(e.target.value)} />
-          <button style={{...successBtnStyle, width:'100%'}} onClick={handleAuth}>{isRegister ? 'KAYIT OL' : 'GİRİŞ YAP'}</button>
+          <input style={{padding:'15px', borderRadius:'10px', border:'none', background:'#333', color:'white'}} placeholder="Kullanıcı Adı" value={authName} onChange={e=>setAuthName(e.target.value)} />
+          <input style={{padding:'15px', borderRadius:'10px', border:'none', background:'#333', color:'white'}} type="password" placeholder="Şifre" value={authPass} onChange={e=>setAuthPass(e.target.value)} />
+          <button style={successBtnStyle} onClick={handleAuth}>{isRegister ? 'KAYIT OL' : 'GİRİŞ YAP'}</button>
           <p style={{color:'#aaa', cursor:'pointer', fontSize:'18px', textDecoration:'underline'}} onClick={()=>setIsRegister(!isRegister)}>{isRegister ? 'Giriş Yap' : 'Yeni Hesap Oluştur'}</p>
         </div>
       </div>
@@ -640,28 +620,26 @@ export default function Game() {
       )}
 
       <div style={containerStyle}>
-        <div style={{height: device==='mobile'?'60px':'90px', background:'rgba(255,255,255,0.05)', borderBottom:'1px solid #333', display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 20px'}}>
+        <div style={{height: device==='mobile'?'60px':'90px', background:'#080808', borderBottom:'1px solid #333', display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 20px'}}>
             <div style={{fontSize: device==='mobile'?'16px':'24px', fontWeight:'bold', display:'flex', gap: device==='mobile'?'10px':'30px'}}><span style={{color:'#ffcc00'}}>⚡ {player?.lvl}</span><span style={{color:'#00ff66'}}>❤️ {player?.hp}/{pStats.maxHp}</span><span style={{color:'#00eaff'}}>💰 {player?.gold}</span></div>
             <button style={{...dangerBtnStyle, fontSize: device==='mobile'?'12px':'20px', padding: device==='mobile'?'5px 15px':'10px 30px'}} onClick={()=>setConfirmAction('logout')}>ÇIKIŞ</button>
         </div>
 
         <div style={{flex:1, position:'relative', overflow: device==='mobile'?'auto':'hidden', padding: screen === 'map' ? 0 : (device==='mobile'?'10px':'40px')}}>
             {screen === 'menu' && (
-                <div style={{display:'flex', justifyContent:'center', alignItems:'center', height:'100%'}}>
-                    <div style={{...cardStyle, width: device==='mobile'?'100%':'800px', flexDirection: device==='mobile'?'column':'row'}}>
-                         <div style={{textAlign:'center', padding:'20px'}}>
-                            <div style={{fontSize: device==='mobile'?'80px':'150px', cursor:'pointer'}} onClick={()=>setShowWardrobe(true)}>{costumeDB[player!.currentCostume].icon}</div>
-                            <h2 style={{fontSize: device==='mobile'?'25px':'35px', color:'#00eaff', margin:'10px 0'}}>{player?.name}</h2>
-                            <div style={{fontSize:'18px', color:'#aaa'}}>Skor: {player?.score}</div>
-                         </div>
-                         <div style={{flex:1, display:'grid', gridTemplateColumns:'1fr 1fr', gap:'15px', padding:'20px', width:'100%'}}>
-                            {[{id:'map',t:'MACERA',i:'🗺️'}, {id:'arena',t:'ARENA',i:'⚔️',check:true}, {id:'shop',t:'MARKET',i:'🛒'}, {id:'inv',t:'ÇANTA',i:'🎒'}, {id:'lib',t:'BİLGİ',i:'📚'}, {id:'mistake',t:'HATA',i:'📜'}].map(m => (
-                                <div key={m.id} onClick={()=>{ playSound('click'); if(m.check && !isArenaUnlocked()) return notify("Arena için Son Boss'u (Cehalet Kalesi) yenmelisin!", "error"); if(m.id==='arena') fetchLeaderboard(); setScreen(m.id as any); }} style={{...btnStyle, flexDirection:'column', height:'100px', background: 'rgba(255,255,255,0.08)', opacity: (m.check && !isArenaUnlocked()) ? 0.3 : 1}}>
-                                    <div style={{fontSize:'30px'}}>{(m.check && !isArenaUnlocked()) ? '🔒' : m.i}</div>
-                                    <div style={{fontSize:'14px'}}>{m.t}</div>
-                                </div>
-                            ))}
-                         </div>
+                <div style={{display:'grid', gridTemplateColumns: device==='mobile'?'1fr':'350px 1fr', height:'100%', gap:'20px'}}>
+                    <div style={{textAlign:'center', borderRight: device==='mobile'?'none':'1px solid #333', paddingRight: device==='mobile'?'0':'40px', borderBottom: device==='mobile'?'1px solid #333':'none', paddingBottom: device==='mobile'?'20px':'0'}}>
+                        <div style={{fontSize: device==='mobile'?'100px':'170px', cursor:'pointer'}} onClick={()=>setShowWardrobe(true)}>{costumeDB[player!.currentCostume].icon}</div>
+                        <h2 style={{fontSize: device==='mobile'?'30px':'40px', color:'#00eaff', margin:'10px 0'}}>{player?.name}</h2>
+                        <div style={{textAlign:'left', background:'#222', padding:'20px', borderRadius:'20px', fontSize: device==='mobile'?'16px':'20px', lineHeight:'1.5', color:'white'}}><div>⚔️ Güç: {pStats.atk}</div><div>🛡️ Can: {pStats.maxHp}</div><div>🏆 Skor: {player?.score}</div></div>
+                    </div>
+                    <div style={{display:'grid', gridTemplateColumns: device==='mobile'?'1fr 1fr':'1fr 1fr', gap:'20px', paddingLeft: device==='mobile'?'0':'40px', alignContent:'center'}}>
+                        {[{id:'map',t:'MACERA',i:'🗺️'}, {id:'arena',t:'ARENA',i:'⚔️',check:true}, {id:'shop',t:'MARKET',i:'🛒'}, {id:'inv',t:'ÇANTA',i:'🎒'}, {id:'lib',t:'BİLGİ',i:'📚'}, {id:'mistake',t:'HATA',i:'📜'}].map(m => (
+                            <div key={m.id} onClick={()=>{ playSound('click'); if(m.check && !isArenaUnlocked()) return notify("Arena için Son Boss'u (Cehalet Kalesi) yenmelisin!", "error"); if(m.id==='arena') fetchLeaderboard(); setScreen(m.id as any); }} style={{background:'#1a1a20', border:'2px solid #333', borderRadius:'20px', height: device==='mobile'?'120px':'180px', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', cursor:'pointer', transition:'0.2s', color:'white', opacity: (m.check && !isArenaUnlocked()) ? 0.3 : 1}}>
+                                <div style={{fontSize: device==='mobile'?'40px':'70px'}}>{(m.check && !isArenaUnlocked()) ? '🔒' : m.i}</div>
+                                <div style={{fontSize: device==='mobile'?'16px':'24px', fontWeight:'bold', marginTop:'10px'}}>{m.t}</div>
+                            </div>
+                        ))}
                     </div>
                 </div>
             )}
@@ -670,43 +648,35 @@ export default function Game() {
 
             {screen === 'battle' && (battle.region || battle.isArena) && (
                 <div style={{height:'100%', display:'flex', flexDirection:'column', background:`linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.8)), url(${battle.isArena ? (battle.region?.bg || FALLBACK_ARENA_BG) : (battle.region?.bg || battle.level?.ico)}) center/cover`}}>
-                    <div style={{flex: 1, display: 'flex', justifyContent: 'space-between', padding: '20px', alignItems: 'flex-start'}}>
-                         <button style={{...dangerBtnStyle, padding:'10px 20px', fontSize:'14px'}} onClick={() => setConfirmAction('surrender')}>{battle.isArena ? '🏳️ TESLİM' : '❌ ÇIK'}</button>
-                         <div style={{width:'50%', height:'20px', background:'#333', borderRadius:'10px', overflow:'hidden', border:'2px solid white'}}>
+                    <div style={{flex: device === 'mobile' ? '0 0 auto' : 2, position:'relative', display: device === 'mobile' ? 'flex' : 'grid', flexDirection: device === 'mobile' ? 'column' : 'row', gridTemplateColumns: '1fr 1fr 1fr', justifyContent: 'center', alignItems: device === 'mobile' ? 'center' : 'end', padding: device === 'mobile' ? '10px 0' : '0 50px 20px 50px', gap: device === 'mobile' ? '5px' : '0'}}>
+                        {battle.dmgText && <div style={{position:'absolute', left:'50%', top:'30%', fontSize:'80px', fontWeight:'bold', color:battle.dmgText.color, animation:'flyUp 0.8s forwards', zIndex:99}}> -{battle.dmgText.val} </div>}
+                        <button style={{...dangerBtnStyle, fontSize:'14px', position:'absolute', top:0, left:0}} onClick={() => setConfirmAction('surrender')}>{battle.isArena ? '🏳️ TESLİM OL' : '❌ ÇIK'}</button>
+                        <div style={{display:'flex', flexDirection:'column', alignItems:'center', width:'100%', order: device==='mobile'?1:3}}>
+                            <div style={{background:'black', border:'2px solid white', borderRadius:'15px', height:'20px', width: device==='mobile'?'120px':'220px', marginBottom:'5px', overflow:'hidden', position:'relative'}}><div style={{width:`${(battle.enemyHp/battle.maxEnemyHp)*100}%`, height:'100%', background:'#ff0055', transition:'0.3s'}}></div><span style={{position:'absolute', inset:0, textAlign:'center', fontSize:'12px', fontWeight:'bold'}}>{Math.floor(battle.enemyHp)}</span></div>
+                            <div style={{fontSize: device==='mobile'?'80px':'170px', filter:'drop-shadow(0 0 20px black)', lineHeight:'1'}}>{battle.isArena ? '🤺' : battle.level?.ico}</div>
+                            <div style={{background:'rgba(0,0,0,0.7)', padding:'5px 15px', borderRadius:'10px', marginTop:'5px', color:'#ffcc00', fontWeight:'bold', fontSize:'24px'}}>{battle.level?.en}</div>
+                        </div>
+                        <div style={{display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', order: 2, paddingBottom: device==='mobile'?'0':'50px'}}>
+                            <h1 style={{fontSize: device==='mobile'?'30px':'80px', color:'rgba(255,255,255,0.1)', fontWeight:'bold', margin:0}}>VS</h1>
+                            {battle.isArena && turn === 'p2' && <div style={{color:'#ffcc00', fontSize:'20px', animation:'pulse 1s infinite'}}>BOT DÜŞÜNÜYOR...</div>}
+                        </div>
+                        <div style={{display:'flex', flexDirection:'column', alignItems:'center', width:'100%', animation: battle.shaking ? 'shake 0.3s' : '', order: device==='mobile'?3:1}}>
+                            <div style={{fontSize: device==='mobile'?'80px':'170px', filter:'drop-shadow(0 0 20px black)', lineHeight:'1'}}>{costumeDB[player!.currentCostume].icon}</div>
+                            <div style={{background:'black', border:'2px solid white', borderRadius:'15px', height:'20px', width: device==='mobile'?'120px':'220px', marginTop:'5px', overflow:'hidden', position:'relative'}}><div style={{width:`${(player!.hp/pStats.maxHp)*100}%`, height:'100%', background:'#00ff66', transition:'0.3s'}}></div><span style={{position:'absolute', inset:0, textAlign:'center', fontSize:'12px', fontWeight:'bold'}}>{player!.hp}</span></div>
+                            <div style={{background:'rgba(0,0,0,0.7)', padding:'5px 15px', borderRadius:'10px', marginTop:'5px', color:'#00eaff', fontWeight:'bold', fontSize:'24px'}}>{player?.name}</div>
+                        </div>
+                    </div>
+                    <div style={{flex:1, background:'rgba(10,10,15,0.95)', borderTop:'4px solid #00eaff', padding:'20px', display:'flex', flexDirection:'column'}}>
+                        <div style={{height:'10px', background:'#333', borderRadius:'10px', overflow:'hidden', marginBottom:'15px'}}>
                             <div style={{width:`${(battle.timer/20)*100}%`, height:'100%', background: battle.timer<5?'red':'#00eaff', transition:'1s linear'}}></div>
-                         </div>
-                    </div>
-
-                    <div style={{flex: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-around'}}>
-                         <div style={{textAlign:'center', animation: battle.shaking ? 'shake 0.3s' : ''}}>
-                            <div style={{fontSize: device==='mobile'?'80px':'120px'}}>{battle.isArena ? '🤺' : battle.level?.ico}</div>
-                            <div style={{background:'red', height:'10px', width:'100px', margin:'0 auto', borderRadius:'5px'}}><div style={{width:`${(battle.enemyHp/battle.maxEnemyHp)*100}%`, background:'#00ff66', height:'100%'}}></div></div>
-                            <div style={{background:'rgba(0,0,0,0.6)', padding:'5px', borderRadius:'5px', marginTop:'5px'}}>{battle.level?.en}</div>
-                         </div>
-
-                         <div style={{textAlign:'center'}}>
-                            {battle.isArena && turn === 'p2' ? (
-                                <div style={{fontSize:'30px', color:'#ffcc00', animation:'pulse 1s infinite'}}>BOT DÜŞÜNÜYOR...<br/>🤔</div>
-                            ) : (
-                                <div style={{fontSize:'50px', fontWeight:'bold', color:'rgba(255,255,255,0.2)'}}>VS</div>
-                            )}
-                         </div>
-
-                         <div style={{textAlign:'center'}}>
-                            <div style={{fontSize: device==='mobile'?'80px':'120px'}}>{costumeDB[player!.currentCostume].icon}</div>
-                            <div style={{background:'red', height:'10px', width:'100px', margin:'0 auto', borderRadius:'5px'}}><div style={{width:`${(player!.hp/pStats.maxHp)*100}%`, background:'#00ff66', height:'100%'}}></div></div>
-                            <div style={{background:'rgba(0,0,0,0.6)', padding:'5px', borderRadius:'5px', marginTop:'5px'}}>{player?.name}</div>
-                         </div>
-                    </div>
-
-                    <div style={{flex: 2, background:'rgba(0,0,0,0.8)', backdropFilter:'blur(10px)', borderTop:'1px solid rgba(255,255,255,0.2)', padding:'20px', display:'flex', flexDirection:'column'}}>
+                        </div>
                         {battle.isArena && turn !== playerSide ? (
-                             <div style={{textAlign:'center', fontSize:'24px', color:'#aaa', marginTop:'20px'}}>Sıra Rakipte, Lütfen Bekle...</div>
+                            <div style={{textAlign:'center', padding:'20px', fontSize:'30px', color:'#ffcc00'}}>SIRA RAKİPTE... <br/><span style={{fontSize:'18px', color:'white'}}>Soru: {battle.qs[battle.qIndex]?.q}</span></div>
                         ) : (
                             <>
-                                <div style={{fontSize: device==='mobile'?'18px':'24px', fontWeight:'bold', textAlign:'center', marginBottom:'20px', color:'#fff'}}>{battle.qs[battle.qIndex]?.q}</div>
-                                <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'15px'}}>
-                                    {battle.qs[battle.qIndex]?.o.map((o,i)=>(<button key={i} onClick={()=>handleAnswer(battle.qs[battle.qIndex].a === i)} disabled={battle.isTransitioning} style={{...btnStyle, opacity: battle.fiftyUsed && i!==battle.qs[battle.qIndex].a && i%2!==0 ? 0.1 : 1, background: battle.isTransitioning ? (battle.qs[battle.qIndex].a === i ? '#00ff66' : '#ff0055') : 'rgba(255,255,255,0.1)', color: battle.isTransitioning ? 'black' : 'white'}}>{o}</button>))}
+                                <div style={{fontSize: device==='mobile'?'18px':'32px', fontWeight:'bold', textAlign:'center', marginBottom:'15px', color:'#00eaff', lineHeight:'1.2'}}>{battle.qs[battle.qIndex]?.q}</div>
+                                <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', flex:1}}>
+                                    {battle.qs[battle.qIndex]?.o.map((o,i)=>(<button key={i} onClick={()=>handleAnswer(battle.qs[battle.qIndex].a === i)} disabled={battle.isTransitioning} style={{...btnStyle, textAlign:'left', fontSize: device==='mobile'?'14px':'22px', padding: device==='mobile'?'10px':'20px', opacity: battle.fiftyUsed && i!==battle.qs[battle.qIndex].a && i%2!==0 ? 0.1 : 1, background: battle.isTransitioning ? (battle.qs[battle.qIndex].a === i ? '#00ff66' : '#ff0055') : '#222', color: battle.isTransitioning ? 'black' : 'white'}}>{o}</button>))}
                                 </div>
                             </>
                         )}
@@ -715,21 +685,17 @@ export default function Game() {
             )}
 
             {(screen==='shop'||screen==='inv'||screen==='lib'||screen==='mistake'||screen==='arena') && (
-                <div style={{height:'100%', overflowY:'auto', padding:'20px'}}>
-                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'30px'}}>
-                        <h1 style={{fontSize:'30px', margin:0, color:'#00eaff'}}>{screen==='inv'?'ÇANTA':screen==='lib'?'KÜTÜPHANE':screen==='arena'?'ARENA':screen==='mistake'?'HATA':'MARKET'}</h1>
-                        <button style={{...dangerBtnStyle, padding:'10px 20px', fontSize:'16px'}} onClick={()=>setScreen('menu')}>GERİ</button>
+                <div style={{height:'100%', overflowY:'auto'}}>
+                    <div style={{display:'flex', justifyContent:'space-between', marginBottom:'30px', borderBottom:'2px solid #333', paddingBottom:'20px'}}>
+                        <h1 style={{fontSize:'40px', margin:0}}>{screen==='inv'?'ÇANTA':screen==='lib'?'KÜTÜPHANE':screen==='arena'?'ARENA':screen==='mistake'?'HATA':'MARKET'}</h1>
+                        {screen==='shop' && <div style={{display:'flex', gap:'20px'}}>{['buy','joker','sell'].map(m=><button key={m} onClick={()=>setShopMode(m as any)} style={{...btnStyle, background:shopMode===m?'#00eaff':'#333', color:shopMode===m?'black':'white'}}>{m.toUpperCase()}</button>)}</div>}
+                        <button style={{...dangerBtnStyle, fontSize:'20px', padding:'10px 30px'}} onClick={()=>setScreen('menu')}>GERİ</button>
                     </div>
                     {screen==='shop' && (
-                        <div style={{display:'flex', gap:'10px', marginBottom:'20px', justifyContent:'center'}}>
-                            {['buy','joker','sell'].map(m=><button key={m} onClick={()=>setShopMode(m as any)} style={{...btnStyle, background:shopMode===m?'#00eaff':'#333', color:shopMode===m?'black':'white', flex:1}}>{m.toUpperCase()}</button>)}
-                        </div>
-                    )}
-                    {screen==='shop' && (
-                        <div style={{display:'grid', gridTemplateColumns: device==='mobile'?'1fr 1fr':'repeat(auto-fit, minmax(150px, 1fr))', gap:'20px'}}>
-                             {shopMode==='buy' && Object.keys(itemDB).filter(k=>itemDB[k].type!=='joker').map(k=>(<div key={k} style={{...cardStyle, alignItems:'center', textAlign:'center'}}><div style={{fontSize:'40px'}}>{itemDB[k].icon}</div><div style={{fontWeight:'bold'}}>{itemDB[k].name}</div><div>{itemDB[k].cost} G</div><button style={{...successBtnStyle, width:'100%', fontSize:'14px'}} onClick={()=>buyItem(k)}>AL</button></div>))}
-                             {shopMode==='joker' && Object.keys(itemDB).filter(k=>itemDB[k].type==='joker').map(k=>(<div key={k} style={{...cardStyle, alignItems:'center', textAlign:'center'}}><div style={{fontSize:'40px'}}>{itemDB[k].icon}</div><div style={{fontWeight:'bold'}}>{itemDB[k].name}</div><div>{itemDB[k].cost} G</div><button style={{...successBtnStyle, width:'100%', fontSize:'14px'}} onClick={()=>buyItem(k)}>AL</button></div>))}
-                             {shopMode==='sell' && player!.inventory.map((it,i)=>(<div key={i} style={{...cardStyle, alignItems:'center', textAlign:'center'}}><div style={{fontSize:'40px'}}>{it.icon}</div><div style={{fontWeight:'bold'}}>{it.name}</div><button style={{...actionBtnStyle, background:'#ffcc00', width:'100%', fontSize:'14px'}} onClick={()=>sellItem(i)}>SAT ({it.cost/2})</button></div>))}
+                        <div style={{display:'grid', gridTemplateColumns: device==='mobile'?'1fr 1fr':'repeat(4, 1fr)', gap:'20px'}}>
+                            {shopMode==='buy' && Object.keys(itemDB).filter(k=>itemDB[k].type!=='joker').map(k=>(<div key={k} style={{background:'#1a1a20', border:'2px solid #333', borderRadius:'20px', padding:'20px', textAlign:'center', color:'white'}}><div style={{fontSize:'40px'}}>{itemDB[k].icon}</div><h3 style={{fontSize:'16px'}}>{itemDB[k].name}</h3><div style={{color:'#aaa', marginBottom:'10px'}}>+{itemDB[k].val} Güç</div><button style={{...btnStyle, width:'100%', background:'white', color:'black', justifyContent:'center'}} onClick={()=>buyItem(k)}>{itemDB[k].cost} G</button></div>))}
+                            {shopMode==='joker' && Object.keys(itemDB).filter(k=>itemDB[k].type==='joker').map(k=>(<div key={k} style={{background:'#1a1a20', border:'2px solid #333', borderRadius:'20px', padding:'20px', textAlign:'center', color:'white'}}><div style={{fontSize:'40px'}}>{itemDB[k].icon}</div><h3 style={{fontSize:'16px'}}>{itemDB[k].name}</h3><div style={{color:'#aaa', marginBottom:'10px'}}>Tek Seferlik</div><button style={{...btnStyle, width:'100%', background:'#00ff66', color:'black', justifyContent:'center'}} onClick={()=>buyItem(k)}>{itemDB[k].cost} G</button></div>))}
+                            {shopMode==='sell' && player!.inventory.map((it,i)=>(<div key={i} style={{background:'#1a1a20', border:'2px solid #333', borderRadius:'20px', padding:'20px', textAlign:'center', color:'white'}}><div style={{fontSize:'40px'}}>{it.icon}</div><h3 style={{fontSize:'20px'}}>{it.name}</h3><button style={{...btnStyle, width:'100%', background:'#ffcc00', color:'black', justifyContent:'center'}} onClick={()=>sellItem(i)}>SAT ({it.cost/2})</button></div>))}
                         </div>
                     )}
                     {screen==='inv' && (
@@ -742,37 +708,37 @@ export default function Game() {
                                     <div onClick={() => unequipItem('acc')} style={{width:'80px', height:'80px', border:'2px solid #444', borderRadius:'15px', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'24px', cursor:'pointer', background: player?.equipped.acc ? '#1a1a20' : 'transparent', color:'white'}}>{player?.equipped.acc ? player.equipped.acc.icon : 'C'}</div>
                                 </div>
                             </div>
-                            <div style={{flex:1, display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(100px, 1fr))', gap:'10px', alignContent:'start'}}>{player!.inventory.map((it,i)=>(<div key={i} style={{background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', padding:'10px', borderRadius:'10px', textAlign:'center', color:'white'}}><div style={{fontSize:'30px'}}>{it.icon}</div><div style={{fontSize:'12px', color:'#aaa', margin:'5px 0'}}>+{it.val} Güç</div><button style={{...btnStyle, width:'100%', fontSize:'10px', padding:'5px', justifyContent:'center'}} onClick={()=>equipItem(i)}>KUŞAN</button></div>))}</div>
+                            <div style={{flex:1, display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:'20px', alignContent:'start'}}>{player!.inventory.map((it,i)=>(<div key={i} style={{background:'#222', border:'2px solid #555', padding:'10px', borderRadius:'10px', textAlign:'center', color:'white'}}><div style={{fontSize:'30px'}}>{it.icon}</div><div style={{fontSize:'14px', color:'#aaa'}}>+{it.val} Güç</div><button style={{...btnStyle, width:'100%', marginTop:'5px', fontSize:'12px', padding:'5px', justifyContent:'center'}} onClick={()=>equipItem(i)}>KUŞAN</button></div>))}</div>
                         </div>
                     )}
                     {screen === 'lib' && (
                         <div style={{display:'grid', gap:'20px', gridTemplateColumns: device==='mobile'?'1fr':'1fr 1fr'}}>
-                            {libraryDB.map((l, i) => (<div key={i} style={{background:'rgba(255,255,255,0.05)', borderLeft:'4px solid #00eaff', padding:'20px', borderRadius:'0 15px 15px 0', color:'white'}}><h3 style={{color:'#ffcc00', fontSize:'20px', margin:'0 0 10px 0'}}>{l.t}</h3><p style={{fontSize:'16px', lineHeight:'1.5', color:'#ddd'}}>{l.c}</p></div>))}
+                            {libraryDB.map((l, i) => (<div key={i} style={{background:'#1a1a20', borderLeft:'6px solid #00eaff', padding:'20px', borderRadius:'0 20px 20px 0', color:'white'}}><h3 style={{color:'#ffcc00', fontSize:'24px', margin:'0 0 10px 0'}}>{l.t}</h3><p style={{fontSize:'18px', lineHeight:'1.5'}}>{l.c}</p></div>))}
                         </div>
                     )}
                     {screen === 'mistake' && (
-                        <div style={{display:'grid', gap:'15px'}}>
-                            {player!.mistakes.length === 0 && <div style={{textAlign:'center', fontSize:'20px', color:'#888', marginTop:'50px'}}>Harika! Hiç hata yapmadın.</div>}
-                            {player!.mistakes.map((m, i) => (<div key={i} style={{background:'rgba(255,0,85,0.1)', border:'1px solid #ff0055', padding:'15px', borderRadius:'15px', display:'flex', justifyContent:'space-between', alignItems:'center', color:'white'}}><div style={{flex:1, marginRight:'10px'}}><div style={{fontWeight:'bold', marginBottom:'5px'}}>{m.q}</div><div style={{color:'#00ff66'}}>Doğru: {m.a}</div></div><button style={{...btnStyle, background:'transparent', border:'1px solid #ff0055', color:'#ff0055', padding:'5px 15px', fontSize:'14px'}} onClick={()=>{const np={...player!}; np.mistakes.splice(i,1); saveGame(np);}}>TEMİZLE</button></div>))}
+                        <div style={{display:'grid', gap:'20px'}}>
+                            {player!.mistakes.length === 0 && <div style={{textAlign:'center', fontSize:'30px', color:'#888'}}>Henüz hata yok!</div>}
+                            {player!.mistakes.map((m, i) => (<div key={i} style={{background:'#1a1a20', border:'2px solid #ff0055', padding:'20px', borderRadius:'20px', display:'flex', justifyContent:'space-between', alignItems:'center', color:'white', flexDirection: device==='mobile'?'column':'row', textAlign: device==='mobile'?'center':'left'}}><div style={{marginBottom: device==='mobile'?'10px':'0'}}><div style={{fontSize:'20px', fontWeight:'bold', marginBottom:'5px'}}>{m.q}</div><div style={{fontSize:'18px', color:'#00ff66'}}>Doğru: {m.a}</div></div><button style={{...btnStyle, background:'#ff0055', border:'none'}} onClick={()=>{const np={...player!}; np.mistakes.splice(i,1); saveGame(np);}}>SİL</button></div>))}
                         </div>
                     )}
                     {screen==='arena' && (
                         <div style={{textAlign:'center', display:'flex', flexDirection:'column', alignItems:'center'}}>
-                            <h2 style={{color:'#ffcc00', fontSize:'30px', marginBottom:'20px'}}>LİDERLİK TABLOSU</h2>
-                            <div style={{width: device==='mobile'?'100%':'600px', background:'rgba(0,0,0,0.3)', borderRadius:'15px', padding:'10px', marginBottom:'20px', maxHeight:'300px', overflowY:'auto'}}>
-                                {leaderboard.length === 0 ? <div style={{color:'white', padding:'20px'}}>Yükleniyor...</div> : leaderboard.map((b,i)=> (
-                                    <div key={i} style={{display:'flex', justifyContent:'space-between', padding:'10px', borderBottom:'1px solid rgba(255,255,255,0.1)', fontSize:'18px', color: b.name===player!.name ? '#00eaff' : 'white', fontWeight: b.name===player!.name ? 'bold' : 'normal', background: b.name===player!.name ? 'rgba(0,234,255,0.1)' : 'transparent'}}><span>#{i+1} {b.name}</span><span>{b.score} LP</span></div>
+                            <h2 style={{color:'#ffcc00', fontSize:'40px', marginBottom:'30px'}}>LİDERLİK TABLOSU</h2>
+                            <div style={{width: device==='mobile'?'100%':'600px', background:'#1a1a20', border:'2px solid #333', borderRadius:'20px', padding:'20px', marginBottom:'20px', maxHeight:'400px', overflowY:'auto'}}>
+                                {leaderboard.length === 0 ? <div style={{color:'white'}}>Yükleniyor...</div> : leaderboard.map((b,i)=> (
+                                    <div key={i} style={{display:'flex', justifyContent:'space-between', padding:'15px', borderBottom:'1px solid #333', fontSize:'24px', color: b.name===player!.name ? '#00eaff' : 'white', fontWeight: b.name===player!.name ? 'bold' : 'normal'}}><span>#{i+1} {b.name}</span><span>{b.score} LP</span></div>
                                 ))}
                             </div>
                             
                             {userRank && userRank > 50 && (
-                                <div style={{width: device==='mobile'?'100%':'600px', background:'rgba(0,234,255,0.1)', border:'1px solid #00eaff', borderRadius:'10px', padding:'10px', display:'flex', justifyContent:'space-between', fontSize:'18px', color:'#00eaff', fontWeight:'bold', marginBottom:'30px'}}>
+                                <div style={{width: device==='mobile'?'100%':'600px', background:'#222', border:'2px solid #00eaff', borderRadius:'10px', padding:'15px', display:'flex', justifyContent:'space-between', fontSize:'24px', color:'#00eaff', fontWeight:'bold', marginBottom:'40px'}}>
                                     <span>#{userRank} {player?.name} (SEN)</span>
                                     <span>{player?.score} LP</span>
                                 </div>
                             )}
 
-                            {arenaSearching ? <div style={{fontSize:'24px', color:'#00eaff', animation:'pulse 1s infinite'}}>RAKİP ARANIYOR...</div> : <button style={{...actionBtnStyle, background:'#00ff66', color:'black'}} onClick={findMatch}>RAKİP BUL</button>}
+                            {arenaSearching ? <div style={{fontSize:'40px', color:'#00eaff', animation:'pulse 1s infinite'}}>RAKİP ARANIYOR...</div> : <button style={{...actionBtnStyle, background:'#00ff66', color:'black'}} onClick={findMatch}>RAKİP BUL</button>}
                         </div>
                     )}
                 </div>
