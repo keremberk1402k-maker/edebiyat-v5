@@ -6,9 +6,8 @@ import { ref, update, query, orderByChild, limitToLast, get, push, set, onValue,
 
 // --- AYARLAR ---
 const BASE_WIDTH = 1200;
-const BASE_HEIGHT = 850;
 
-// --- TASARIM (NEON & FERAH) ---
+// --- TASARIM (PC ODAKLI YATAY DÜZEN) ---
 const containerStyle = {
     height: '100vh',
     display: 'flex',
@@ -19,40 +18,38 @@ const containerStyle = {
     overflow: 'hidden'
 };
 
-// Ortak Buton Stili
 const btnStyle = {
-    padding: '12px 24px',
-    fontSize: '16px',
+    padding: '15px 25px',
+    fontSize: '18px',
     cursor: 'pointer',
-    borderRadius: '12px',
+    borderRadius: '15px',
     border: '1px solid rgba(255,255,255,0.1)',
-    background: 'linear-gradient(145deg, #333, #222)',
+    background: 'linear-gradient(145deg, #2a2a2a, #1a1a1a)',
     color: 'white',
     fontWeight: 'bold',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: '8px',
+    gap: '10px',
     transition: 'all 0.2s ease',
-    boxShadow: '0 4px 6px rgba(0,0,0,0.5)',
-    margin: '5px'
+    boxShadow: '0 5px 15px rgba(0,0,0,0.3)',
+    textTransform: 'uppercase' as const,
+    letterSpacing: '1px'
 };
 
-// Parlayan Ana Buton
 const actionBtnStyle = {
     ...btnStyle,
-    background: 'linear-gradient(145deg, #00eaff, #008c99)',
+    background: 'linear-gradient(90deg, #00eaff, #008c99)',
     color: 'black',
     border: 'none',
-    boxShadow: '0 0 20px rgba(0, 234, 255, 0.4)',
-    fontSize: '20px',
-    padding: '15px 40px'
+    boxShadow: '0 0 25px rgba(0, 234, 255, 0.3)',
+    fontSize: '24px',
+    padding: '25px 40px'
 };
 
-const dangerBtnStyle = { ...btnStyle, background: 'linear-gradient(145deg, #ff0055, #990033)', boxShadow: '0 0 10px rgba(255, 0, 85, 0.3)' };
-const successBtnStyle = { ...btnStyle, background: 'linear-gradient(145deg, #00ff66, #00993d)', color: 'black', boxShadow: '0 0 10px rgba(0, 255, 102, 0.3)' };
+const dangerBtnStyle = { ...btnStyle, background: '#ff0055', color: 'white' };
+const successBtnStyle = { ...btnStyle, background: '#00ff66', color: 'black' };
 
-// Kart Görünümü (Market/Çanta)
 const cardStyle = {
     background: 'rgba(255, 255, 255, 0.05)',
     backdropFilter: 'blur(10px)',
@@ -63,15 +60,26 @@ const cardStyle = {
     flexDirection: 'column' as const,
     alignItems: 'center',
     gap: '10px',
-    boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.37)',
-    minHeight: '220px',
-    justifyContent: 'space-between'
+    boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.37)'
+};
+
+const statsBoxStyle = {
+    background: 'rgba(0, 0, 0, 0.6)',
+    border: '1px solid #333',
+    borderRadius: '15px',
+    padding: '20px',
+    width: '100%',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '10px',
+    marginTop: '20px'
 };
 
 const NotificationComponent = () => null;
 
 // --- VERİ TİPLERİ ---
-type Item = { id: string; name: string; type: 'wep' | 'arm' | 'acc' | 'joker'; val: number; cost: number; icon: string; jokerId?: string; uid?: number };
+type ItemType = 'wep' | 'arm' | 'acc' | 'joker';
+type Item = { id: string; name: string; type: ItemType; val: number; cost: number; icon: string; jokerId?: string; uid?: number };
 type Costume = { id: string; name: string; icon: string };
 type Question = { q: string; o: string[]; a: number };
 type Level = { id: string; t: string; hp: number; en: string; ico: string; diff: string; isBoss?: boolean };
@@ -84,25 +92,18 @@ type Player = {
     unlockedCostumes: string[]; currentCostume: string; tutorialSeen: boolean;
 };
 
-// --- DATABASE (GÜNCELLENMİŞ) ---
+// --- DATABASE ---
 const itemDB: { [key: string]: Item } = {
-    // SİLAHLAR
     'w1': { id: 'w1', name: 'Paslı Kalem', type: 'wep', val: 10, cost: 50, icon: '✏️' },
     'w2': { id: 'w2', name: 'Divit Uç', type: 'wep', val: 25, cost: 150, icon: '✒️' },
     'w3': { id: 'w3', name: 'Altın Dolma', type: 'wep', val: 50, cost: 500, icon: '🖊️' },
     'w4': { id: 'w4', name: 'Efsanevi Kılıç', type: 'wep', val: 120, cost: 2500, icon: '🗡️' },
-    
-    // ZIRHLAR
     'a1': { id: 'a1', name: 'Eski Defter', type: 'arm', val: 50, cost: 50, icon: '📓' },
     'a2': { id: 'a2', name: 'Deri Cilt', type: 'arm', val: 150, cost: 200, icon: '📕' },
     'a3': { id: 'a3', name: 'Ansiklopedi', type: 'arm', val: 300, cost: 800, icon: '📚' },
     'a4': { id: 'a4', name: 'Titanyum Zırh', type: 'arm', val: 600, cost: 3000, icon: '🛡️' },
-
-    // AKSESUAR
     'ac1': { id: 'ac1', name: 'Okuma Gözlüğü', type: 'acc', val: 10, cost: 100, icon: '👓' },
     'ac2': { id: 'ac2', name: 'Bilge Şapkası', type: 'acc', val: 30, cost: 600, icon: '🎓' },
-
-    // JOKERLER
     'j1': { id: 'j1', name: '%50 Joker', type: 'joker', val: 0, cost: 50, icon: '½', jokerId: '5050' },
     'j2': { id: 'j2', name: 'Can İksiri', type: 'joker', val: 0, cost: 75, icon: '🧪', jokerId: 'heal' },
     'j3': { id: 'j3', name: 'Pas Geç', type: 'joker', val: 0, cost: 100, icon: '⏩', jokerId: 'skip' },
@@ -152,7 +153,6 @@ const libraryDB = [
     { t: "Şiir Bilgisi", c: "Duyguların, hayallerin ahenkli bir dille anlatılmasıdır. Ölçü, kafiye, redif ve nazım birimi şiirin ahenk unsurlarıdır." },
 ];
 
-// --- YARDIMCI FONKSİYONLAR ---
 const calcStats = (p: Player | null) => {
     if (!p) return { atk: 0, maxHp: 100 };
     let atk = p.baseAtk + (p.lvl * 5);
@@ -174,7 +174,6 @@ const shuffleQuestions = (qs: Question[]) => {
     });
 };
 
-// --- ANA COMPONENT ---
 export default function Game() {
   const [device, setDevice] = useState<'pc' | 'mobile' | null>(null);
   const [scale, setScale] = useState(1);
@@ -185,7 +184,6 @@ export default function Game() {
   const [authName, setAuthName] = useState('');
   const [authPass, setAuthPass] = useState('');
   const [player, setPlayer] = useState<Player | null>(null);
-
   const [isMuted, setIsMuted] = useState(false);
   
   const pStats = calcStats(player);
@@ -222,10 +220,9 @@ export default function Game() {
   const [userRank, setUserRank] = useState<number | null>(null);
   const [arenaSearching, setArenaSearching] = useState(false);
 
-  // --- SES SİSTEMİ (GÜVENLİ VE HIZLI) ---
+  // --- SES SİSTEMİ ---
   const playSound = (type: 'click' | 'correct' | 'wrong' | 'win') => {
     if (isMuted) return;
-    // Sadece tarayıcı ortamında (client-side) çalışır
     if (typeof window !== 'undefined') {
         const urls = {
             'click': 'https://cdn.pixabay.com/audio/2022/03/24/audio_78c2cb5739.mp3',
@@ -294,6 +291,23 @@ export default function Game() {
       }
   }, [turn, screen, battle.active, isBotMatch]);
 
+  // --- LİDERLİK SIRALAMASINI OTOMATİK HESAPLA ---
+  useEffect(() => {
+      if (player) {
+          const usersRef = query(ref(db, 'users'), orderByChild('score'), limitToLast(100));
+          get(usersRef).then((snapshot) => {
+              if (snapshot.exists()) {
+                  const data = snapshot.val();
+                  const list = Object.values(data) as {name:string, score:number}[];
+                  list.sort((a, b) => b.score - a.score);
+                  setLeaderboard(list.slice(0, 50));
+                  const myRank = list.findIndex(u => u.name === player.name);
+                  setUserRank(myRank + 1);
+              }
+          });
+      }
+  }, [player?.score, screen]); // Puan değiştiğinde veya ekran değiştiğinde güncelle
+
   const handleBotMove = (move: 'correct' | 'wrong') => {
       if (!battle.active) return;
       
@@ -302,7 +316,6 @@ export default function Game() {
       let nb = { ...battle };
       let pDmg = 0;
 
-      // Botun hamlesini işle
       const botDmg = 30 + (botStats.itemLvl * 10);
       const hit = move === 'correct';
 
@@ -322,32 +335,9 @@ export default function Game() {
           setBattle({...nb, active:false}); notify("KAYBETTİN...", "error"); setScreen('menu'); return;
       }
 
-      // Sırayı tekrar oyuncuya ver
       setTurn('p1');
-      setBattle({...nb, timer: 20}); // Süreyi sıfırla
+      setBattle({...nb, timer: 20});
   };
-
-  const fetchLeaderboard = () => {
-      const usersRef = query(ref(db, 'users'), orderByChild('score'), limitToLast(100));
-      get(usersRef).then((snapshot) => {
-          if (snapshot.exists()) {
-              const data = snapshot.val();
-              const list = Object.values(data) as {name:string, score:number}[];
-              list.sort((a, b) => b.score - a.score);
-              setLeaderboard(list.slice(0, 50));
-              if(player) {
-                  const myRank = list.findIndex(u => u.name === player.name);
-                  setUserRank(myRank + 1);
-              }
-          }
-      });
-  };
-
-  useEffect(() => {
-      if(screen === 'arena') {
-          fetchLeaderboard();
-      }
-  }, [screen]);
 
   const handleAuth = () => {
     playSound('click');
@@ -384,31 +374,14 @@ export default function Game() {
     setPlayer({...p});
   };
 
-  const calculateBotStats = (playerScore: number) => {
-      let accuracy = 0.5 + (playerScore / 10000); 
-      if (accuracy > 0.95) accuracy = 0.95;
-      let speed = 5000 - (playerScore * 0.5);
-      if (speed < 1500) speed = 1500;
-      let name = "Acemi Çırak";
-      let itemLvl = 0;
-      if(playerScore > 500) { name = "Köy Ozanı"; itemLvl = 1; }
-      if(playerScore > 1500) { name = "Saray Katibi"; itemLvl = 2; }
-      if(playerScore > 3000) { name = "Divan Şairi"; itemLvl = 3; }
-      if(playerScore > 5000) { name = "Edebiyat Üstadı"; itemLvl = 4; }
-      return { acc: accuracy, speed, name, itemLvl };
-  };
-
   const findMatch = async () => {
       if (!player) return;
       playSound('click');
       setArenaSearching(true);
-      
       const botTimeout = setTimeout(() => {
           setArenaSearching(false);
           startBotMatch();
       }, 5000);
-
-      // (Online maç kodu buraya gelir ama şimdilik bot odaklı)
   };
 
   const startBotMatch = () => {
@@ -417,7 +390,7 @@ export default function Game() {
       setPlayerSide('p1'); 
       setTurn('p1');
 
-      const botStats = calculateBotStats(player.score);
+      const botStats = { speed: 3000, acc: 0.5, name: 'Acemi Bot', itemLvl: 0 };
       setBotDifficulty(botStats);
       const myStats = calcStats(player);
       setBattle({
@@ -430,10 +403,6 @@ export default function Game() {
       });
       setScreen('battle');
       notify(`Rakip: ${botStats.name}`, "success");
-  };
-
-  const listenToRoom = (rId: string, side: 'p1' | 'p2') => {
-     // Online dinleme fonksiyonu
   };
 
   const handleAnswer = (correct: boolean) => {
@@ -467,7 +436,6 @@ export default function Game() {
               setBattle({...nb, active:false}); notify("BOTU YENDİN! +50 SKOR", "success"); setScreen('menu'); return;
           }
 
-          // Cevap sonrası sıra BOTA geçiyor
           setTurn('p2');
           nb.qIndex++; 
           if(nb.qIndex >= nb.qs.length) nb.qIndex = 0;
@@ -476,7 +444,6 @@ export default function Game() {
           return;
       }
 
-      // ... Hikaye modu ...
       const np = { ...player! };
       if (correct) {
         nb.combo++; const stats = calcStats(np); let dmg = stats.atk; if (nb.combo > 2) dmg *= 1.5; dmg = Math.floor(dmg);
@@ -494,22 +461,19 @@ export default function Game() {
         playSound('win');
         np.gold += 100;
         
-        // --- BÖLÜM GEÇME MANTIĞI (GARANTİ) ---
         if (nb.region && nb.level) {
             const currentProgress = np.regionProgress[nb.region.id] || 0;
             const levelIndex = nb.region.levels.findIndex(l => l.id === nb.level!.id);
             
             if(levelIndex === currentProgress) {
-                np.regionProgress[nb.region.id] = currentProgress + 1; // İlerlemeyi artır
+                np.regionProgress[nb.region.id] = currentProgress + 1;
             }
 
             if(nb.level.isBoss) {
-                // Kostümü aç
                 if(nb.region.unlockC && !np.unlockedCostumes.includes(nb.region.unlockC)) {
                     np.unlockedCostumes.push(nb.region.unlockC);
                     notify(`KOSTÜM KAZANDIN: ${costumeDB[nb.region.unlockC].name}`, "success");
                 }
-                // Sonraki bölgeyi zorla aç
                 const rIdx = regions.findIndex(r => r.id === nb.region!.id);
                 if(rIdx < regions.length - 1) {
                     const nextR = regions[rIdx + 1].id;
@@ -534,42 +498,10 @@ export default function Game() {
       setBattle(nb); saveGame(np);
   };
 
-  const resolveRoundOnline = async (p2LastMove: string) => {}; 
-
   const buyItem = (id:string) => { playSound('click'); const it=itemDB[id]; if(player!.gold>=it.cost){let np={...player!}; np.gold-=it.cost; if(it.type==='joker') np.jokers[it.jokerId!]=(np.jokers[it.jokerId!]||0)+1; else np.inventory.push({...it, uid:Date.now()}); saveGame(np); notify("Satın Alındı!", "success");}else notify("Para Yetersiz!", "error"); };
   const equipItem = (idx:number) => { playSound('click'); if(!player) return; const np={...player}; const it=np.inventory[idx]; if (it.type === 'joker') return notify("Jokerler kuşanılamaz!", "error"); const type = it.type as 'wep' | 'arm' | 'acc'; if(np.equipped[type]) np.inventory.push(np.equipped[type]!); np.equipped[type]=it; np.inventory.splice(idx,1); saveGame(np); notify("Kuşanıldı", "success"); };
   const unequipItem = (type: 'wep' | 'arm' | 'acc') => { playSound('click'); if(!player || !player.equipped[type]) return; const np = { ...player }; np.inventory.push(np.equipped[type]!); np.equipped[type] = null; saveGame(np); notify("Çıkarıldı", "success"); };
-  
-  // --- JOKER DÜZELTMESİ (Aktif Savaş Kontrolü) ---
-  const useJoker = (type: string) => { 
-      playSound('click'); 
-      if(!player || !battle.active) return; 
-      if((player.jokers[type]||0)<=0) return notify("Jokerin Kalmadı!", "error");
-      
-      let np = {...player}; 
-      np.jokers[type]--; 
-      
-      if(type==='heal') {
-          np.hp = Math.min(np.hp+50, calcStats(np).maxHp);
-          notify("Can Yenilendi! (+50)", "success");
-      }
-      if(type==='skip') { 
-          setBattle(prev=>({...prev, enemyHp:0})); 
-          setTimeout(()=>handleAnswer(true), 100); 
-          notify("Bölüm Geçildi!", "success");
-      } 
-      if(type==='time') {
-          setBattle(prev=>({...prev, timer:prev.timer+20})); 
-          notify("Ek Süre Eklendi!", "success");
-      }
-      if(type==='5050') {
-          setBattle(prev=>({...prev, fiftyUsed:true})); 
-          notify("%50 Kullanıldı!", "success");
-      }
-      
-      saveGame(np); 
-  };
-
+  const useJoker = (type: string) => { playSound('click'); if(!player || !battle.active) return; if((player.jokers[type]||0)<=0) return notify("Jokerin Kalmadı!", "error"); let np = {...player}; np.jokers[type]--; if(type==='heal') { np.hp = Math.min(np.hp+50, calcStats(np).maxHp); notify("Can Yenilendi! (+50)", "success"); } if(type==='skip') { setBattle(prev=>({...prev, enemyHp:0})); setTimeout(()=>handleAnswer(true), 100); notify("Bölüm Geçildi!", "success"); } if(type==='time') { setBattle(prev=>({...prev, timer:prev.timer+20})); notify("Ek Süre Eklendi!", "success"); } if(type==='5050') { setBattle(prev=>({...prev, fiftyUsed:true})); notify("%50 Kullanıldı!", "success"); } saveGame(np); };
   const sellItem = (idx:number) => { playSound('click'); if(!player)return; const np={...player}; np.gold+=np.inventory[idx].cost/2; np.inventory.splice(idx,1); saveGame(np); notify("Satıldı", "success"); };
 
   const isArenaUnlocked = () => {
@@ -689,21 +621,30 @@ export default function Game() {
 
         <div style={{flex:1, position:'relative', overflow: device==='mobile'?'auto':'hidden', padding: screen === 'map' ? 0 : (device==='mobile'?'10px':'40px')}}>
             {screen === 'menu' && (
-                <div style={{display:'flex', justifyContent:'center', alignItems:'center', height:'100%'}}>
-                    <div style={{...cardStyle, width: device==='mobile'?'100%':'800px', flexDirection: device==='mobile'?'column':'row'}}>
-                         <div style={{textAlign:'center', padding:'20px'}}>
-                            <div style={{fontSize: device==='mobile'?'80px':'150px', cursor:'pointer'}} onClick={()=>setShowWardrobe(true)}>{costumeDB[player!.currentCostume].icon}</div>
-                            <h2 style={{fontSize: device==='mobile'?'25px':'35px', color:'#00eaff', margin:'10px 0'}}>{player?.name}</h2>
-                            <div style={{fontSize:'18px', color:'#aaa'}}>Skor: {player?.score}</div>
+                <div style={{display:'flex', justifyContent:'center', alignItems:'center', height:'100%', flexDirection: device === 'mobile' ? 'column' : 'row', gap: device === 'mobile' ? '20px' : '50px'}}>
+                    
+                    {/* SOL TARA: KARAKTER & İSTATİSTİK (PC ODAKLI YATAY DÜZEN) */}
+                    <div style={{...cardStyle, width: device==='mobile'?'90%':'400px', border:'2px solid #00eaff'}}>
+                         <div style={{textAlign:'center'}}>
+                            <div style={{fontSize: device==='mobile'?'80px':'120px', cursor:'pointer'}} onClick={()=>setShowWardrobe(true)}>{costumeDB[player!.currentCostume].icon}</div>
+                            <h2 style={{fontSize: device==='mobile'?'25px':'30px', color:'#00eaff', margin:'10px 0'}}>{player?.name}</h2>
+                            <div style={{color:'#aaa', fontWeight:'bold', fontSize:'18px'}}>Dünya Sıralaması: #{userRank ? userRank : '-'}</div>
                          </div>
-                         <div style={{flex:1, display:'grid', gridTemplateColumns:'1fr 1fr', gap:'15px', padding:'20px', width:'100%'}}>
-                            {[{id:'map',t:'MACERA',i:'🗺️'}, {id:'arena',t:'ARENA',i:'⚔️',check:true}, {id:'shop',t:'MARKET',i:'🛒'}, {id:'inv',t:'ÇANTA',i:'🎒'}, {id:'lib',t:'BİLGİ',i:'📚'}, {id:'mistake',t:'HATA',i:'📜'}].map(m => (
-                                <div key={m.id} onClick={()=>{ playSound('click'); if(m.check && !isArenaUnlocked()) return notify("Arena için Son Boss'u (Cehalet Kalesi) yenmelisin!", "error"); if(m.id==='arena') fetchLeaderboard(); setScreen(m.id as any); }} style={{...btnStyle, flexDirection:'column', height:'100px', background: 'rgba(255,255,255,0.08)', opacity: (m.check && !isArenaUnlocked()) ? 0.3 : 1}}>
-                                    <div style={{fontSize:'30px'}}>{(m.check && !isArenaUnlocked()) ? '🔒' : m.i}</div>
-                                    <div style={{fontSize:'14px'}}>{m.t}</div>
-                                </div>
-                            ))}
+                         <div style={statsBoxStyle}>
+                             <div style={{display:'flex', justifyContent:'space-between', fontSize:'18px'}}><span>⚔️ Saldırı:</span> <span style={{color:'#ff0055', fontWeight:'bold'}}>{pStats.atk}</span></div>
+                             <div style={{display:'flex', justifyContent:'space-between', fontSize:'18px'}}><span>❤️ Can:</span> <span style={{color:'#00ff66', fontWeight:'bold'}}>{pStats.maxHp}</span></div>
+                             <div style={{display:'flex', justifyContent:'space-between', fontSize:'18px'}}><span>🏆 Skor:</span> <span style={{color:'#ffcc00', fontWeight:'bold'}}>{player?.score}</span></div>
                          </div>
+                    </div>
+
+                    {/* SAĞ TARAF: BUTONLAR (GENİŞ) */}
+                    <div style={{display:'grid', gridTemplateColumns: device==='mobile'?'1fr 1fr':'repeat(2, 1fr)', gap:'20px', width: device==='mobile'?'90%':'600px'}}>
+                        {[{id:'map',t:'MACERA',i:'🗺️'}, {id:'arena',t:'ARENA',i:'⚔️',check:true}, {id:'shop',t:'MARKET',i:'🛒'}, {id:'inv',t:'ÇANTA',i:'🎒'}, {id:'lib',t:'BİLGİ',i:'📚'}, {id:'mistake',t:'HATA',i:'📜'}].map(m => (
+                            <div key={m.id} onClick={()=>{ playSound('click'); if(m.check && !isArenaUnlocked()) return notify("Arena için Son Boss'u (Cehalet Kalesi) yenmelisin!", "error"); if(m.id==='arena') fetchLeaderboard(); setScreen(m.id as any); }} style={{...btnStyle, flexDirection:'column', height:'160px', background: 'rgba(255,255,255,0.05)', opacity: (m.check && !isArenaUnlocked()) ? 0.3 : 1, fontSize:'20px'}}>
+                                <div style={{fontSize:'50px'}}>{(m.check && !isArenaUnlocked()) ? '🔒' : m.i}</div>
+                                <div style={{marginTop:'10px'}}>{m.t}</div>
+                            </div>
+                        ))}
                     </div>
                 </div>
             )}
@@ -813,12 +754,12 @@ export default function Game() {
                     {screen === 'mistake' && (
                         <div style={{display:'grid', gap:'15px'}}>
                             {player!.mistakes.length === 0 && <div style={{textAlign:'center', fontSize:'20px', color:'#888', marginTop:'50px'}}>Harika! Hiç hata yapmadın.</div>}
-                            {player!.mistakes.map((m, i) => (<div key={i} style={{background:'rgba(255,0,85,0.1)', border:'1px solid #ff0055', padding:'15px', borderRadius:'15px', display:'flex', justifyContent:'space-between', alignItems:'center', color:'white'}}><div style={{flex:1, marginRight:'10px'}}><div style={{fontWeight:'bold', marginBottom:'5px'}}>{m.q}</div><div style={{color:'#00ff66'}}>Doğru: {m.a}</div></div><button style={{...btnStyle, background:'transparent', border:'1px solid #ff0055', color:'#ff0055', padding:'5px 15px', fontSize:'14px'}} onClick={()=>{const np={...player!}; np.mistakes.splice(i,1); saveGame(np);}}>TEMİZLE</button></div>))}
+                            {player!.mistakes.map((m, i) => (<div key={i} style={{background:'rgba(255,0,85,0.1)', border:'1px solid #ff0055', padding:'15px', borderRadius:'15px', display:'flex', justifyContent:'space-between', alignItems:'center', color:'white', flexDirection: device==='mobile'?'column':'row', textAlign: device==='mobile'?'center':'left'}}><div style={{marginBottom: device==='mobile'?'10px':'0'}}><div style={{fontSize:'20px', fontWeight:'bold', marginBottom:'5px'}}>{m.q}</div><div style={{fontSize:'18px', color:'#00ff66'}}>Doğru: {m.a}</div></div><button style={{...btnStyle, background:'#ff0055', border:'none'}} onClick={()=>{const np={...player!}; np.mistakes.splice(i,1); saveGame(np);}}>SİL</button></div>))}
                         </div>
                     )}
                     {screen==='arena' && (
                         <div style={{textAlign:'center', display:'flex', flexDirection:'column', alignItems:'center'}}>
-                            <h2 style={{color:'#ffcc00', fontSize:'30px', marginBottom:'20px'}}>LİDERLİK TABLOSU</h2>
+                            <h2 style={{color:'#ffcc00', fontSize:'40px', marginBottom:'30px'}}>LİDERLİK TABLOSU</h2>
                             <div style={{width: device==='mobile'?'100%':'600px', background:'rgba(0,0,0,0.3)', borderRadius:'15px', padding:'10px', marginBottom:'20px', maxHeight:'300px', overflowY:'auto'}}>
                                 {leaderboard.length === 0 ? <div style={{color:'white', padding:'20px'}}>Yükleniyor...</div> : leaderboard.map((b,i)=> (
                                     <div key={i} style={{display:'flex', justifyContent:'space-between', padding:'10px', borderBottom:'1px solid rgba(255,255,255,0.1)', fontSize:'18px', color: b.name===player!.name ? '#00eaff' : 'white', fontWeight: b.name===player!.name ? 'bold' : 'normal', background: b.name===player!.name ? 'rgba(0,234,255,0.1)' : 'transparent'}}><span>#{i+1} {b.name}</span><span>{b.score} LP</span></div>
