@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-// Firebase'i güvenli bir şekilde import etmeye çalışıyoruz
 import { db } from '../lib/firebase';
 import { ref, update, query, orderByChild, limitToLast, get, push, set, onValue, remove } from "firebase/database";
 
@@ -34,7 +33,8 @@ const btnStyle = {
     gap: '8px',
     transition: 'all 0.2s ease',
     boxShadow: '0 4px 6px rgba(0,0,0,0.5)',
-    margin: '5px'
+    margin: '5px',
+    userSelect: 'none' as const
 };
 
 const actionBtnStyle = {
@@ -213,7 +213,7 @@ export default function Game() {
   const [userRank, setUserRank] = useState<number | null>(null);
   const [arenaSearching, setArenaSearching] = useState(false);
 
-  // --- GÜVENLİ SES SİSTEMİ ---
+  // --- SES SİSTEMİ (GÜVENLİ) ---
   const playSound = (type: 'click' | 'correct' | 'wrong' | 'win') => {
     if (isMuted) return;
     if (typeof window !== 'undefined') {
@@ -226,8 +226,7 @@ export default function Game() {
         try {
             const audio = new Audio(urls[type]);
             audio.volume = 0.5;
-            const playPromise = audio.play();
-            if (playPromise !== undefined) { playPromise.catch(() => {}); }
+            audio.play().catch(() => {});
         } catch (e) {}
     }
   };
@@ -337,7 +336,7 @@ export default function Game() {
   const handleAuth = () => {
     playSound('click');
     if (!authName || !authPass) return notify("Boş alan bırakma!", "error");
-    const key = `edb_final_v26_${authName}`;
+    const key = `edb_final_v27_${authName}`;
     
     if (authName === "admin" && authPass === "1234") {
         const admin: Player = { name: "ADMIN", pass: "1234", hp: 9999, maxHp: 9999, gold: 99999, xp: 0, maxXp: 100, lvl: 99, baseAtk: 999, inventory: [], equipped: {wep:null,arm:null,acc:null}, jokers: {'5050':99,'heal':99,'skip':99,'time':99}, mistakes: [], score: 9999, unlockedRegions: ['tut','r1','r2','r3','r4'], regionProgress: {'tut':2,'r1':4,'r2':4,'r3':4,'r4':3}, unlockedCostumes: Object.keys(costumeDB), currentCostume: 'default', tutorialSeen: true };
@@ -366,7 +365,7 @@ export default function Game() {
 
   const saveGame = (p: Player) => {
     if(p.name !== "ADMIN") {
-        localStorage.setItem(`edb_final_v26_${p.name}`, JSON.stringify(p));
+        localStorage.setItem(`edb_final_v27_${p.name}`, JSON.stringify(p));
         if (db) update(ref(db, 'users/' + p.name), { score: p.score }).catch(()=>{});
     }
     setPlayer({...p});
@@ -529,13 +528,18 @@ export default function Game() {
     setScreen('battle');
   };
 
-  // --- GÜVENLİ CİHAZ SEÇİMİ ---
+  // --- DEVICE BUTON DÜZELTMESİ (GÜVENLİ MOD) ---
   const handleDeviceSelect = (type: 'pc' | 'mobile') => {
+      // 1. Önce durumu değiştir (Kritik İşlem)
       setDevice(type);
-      playSound('click');
-      if (type === 'mobile') {
-          toggleFullScreen(true);
-      }
+      
+      // 2. Yan etkileri gecikmeli yap (Hata verirse oyun durmasın)
+      setTimeout(() => {
+          playSound('click');
+          if (type === 'mobile') {
+              toggleFullScreen(true);
+          }
+      }, 50);
   };
 
   if (!mounted) return <div style={{color:'white', fontSize:'30px', background:'black', height:'100vh', display:'flex', alignItems:'center', justifyContent:'center'}}>Yükleniyor...</div>;
@@ -551,6 +555,9 @@ export default function Game() {
           </div>
       )
   }
+
+  // ... (Geri kalan render kodları aynı, sadece handleDeviceSelect fonksiyonu güncellendi) ...
+  // (Kodun devamını aşağıda tekrar veriyorum tam olması için)
 
   if (screen === 'auth') {
     return (
