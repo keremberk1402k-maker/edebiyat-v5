@@ -1,13 +1,11 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-// Firebase importlarını try-catch mantığına gerek kalmadan kullanacağız
-// Eğer firebase.ts dosyan boşsa bile bu kodun çalışması için önlem aldım.
 import { db } from '../lib/firebase';
-import { ref, update, query, orderByChild, limitToLast, get } from "firebase/database";
+import { ref, update, query, orderByChild, limitToLast, get, push, set, onValue, remove } from "firebase/database";
 
 // --- AYARLAR ---
-const SAVE_KEY_PREFIX = "edb_save_v31_"; // Versiyonu 31 yaptık ki temiz başlasın
+const SAVE_KEY_PREFIX = "edb_save_v32_"; // Versiyon 32 (Temiz Başlangıç)
 
 // --- TASARIM ---
 const containerStyle = {
@@ -172,7 +170,8 @@ const shuffleQuestions = (qs: Question[]) => {
 
 export default function Game() {
   const [device, setDevice] = useState<'pc' | 'mobile' | null>(null);
-  const [mounted, setMounted] = useState(false); // Başlangıçta false
+  const [scale, setScale] = useState(1);
+  const [mounted, setMounted] = useState(false);
   const [screen, setScreen] = useState<'auth'|'menu'|'map'|'battle'|'shop'|'inv'|'lib'|'mistake'|'arena'>('auth');
   const [isRegister, setIsRegister] = useState(false);
   
@@ -191,6 +190,8 @@ export default function Game() {
   const [confirmAction, setConfirmAction] = useState<'logout' | 'surrender' | null>(null);
   const [notification, setNotification] = useState<{msg: string, type: 'success'|'error'} | null>(null);
 
+  const [roomID, setRoomID] = useState<string | null>(null);
+  const [playerSide, setPlayerSide] = useState<'p1' | 'p2' | null>(null);
   const [turn, setTurn] = useState<'p1' | 'p2' | 'resolving'>('p1');
   const [isBotMatch, setIsBotMatch] = useState(false);
   const [botDifficulty, setBotDifficulty] = useState({ speed: 3000, acc: 0.5, name: 'Acemi Bot', itemLvl: 0 });
@@ -213,7 +214,7 @@ export default function Game() {
   const [userRank, setUserRank] = useState<number | null>(null);
   const [arenaSearching, setArenaSearching] = useState(false);
 
-  // --- GÜVENLİ SES SİSTEMİ ---
+  // --- SES SİSTEMİ ---
   const playSound = (type: 'click' | 'correct' | 'wrong' | 'win') => {
     if (isMuted) return;
     if (typeof window !== 'undefined') {
@@ -246,15 +247,14 @@ export default function Game() {
   };
 
   useEffect(() => {
-    setMounted(true); // Sayfa yüklendiğinde mounted true olur
+    setMounted(true);
     const handleResize = () => {
-      if (typeof window !== 'undefined') {
-        if (device !== 'mobile' && device !== 'pc') return; // Cihaz seçilmediyse ölçekleme
-        const scaleX = (window.innerWidth / BASE_WIDTH) * 0.95;
-        const scaleY = (window.innerHeight / BASE_HEIGHT) * 0.95;
-        setScale(Math.min(scaleX, scaleY, 1));
-      }
+      if (device === 'mobile') { setScale(1); return; }
+      const scaleX = (window.innerWidth / BASE_WIDTH) * 0.95;
+      const scaleY = (window.innerHeight / BASE_HEIGHT) * 0.95;
+      setScale(Math.min(scaleX, scaleY, 1));
     };
+    handleResize();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, [device]);
@@ -273,7 +273,7 @@ export default function Game() {
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [screen, battle.active, battle.timer, turn, battle.isTransitioning]);
+  }, [screen, battle.active, battle.timer, turn, playerSide, roomID, battle.isTransitioning]);
 
   useEffect(() => {
       if (screen === 'battle' && battle.active && battle.isArena && isBotMatch && turn === 'p2' && !battle.isTransitioning) {
@@ -287,7 +287,6 @@ export default function Game() {
       }
   }, [turn, screen, battle.active, isBotMatch]);
 
-  // Liderlik tablosu
   useEffect(() => {
       if (player && db) { 
           const usersRef = query(ref(db, 'users'), orderByChild('score'), limitToLast(100));
@@ -376,23 +375,62 @@ export default function Game() {
     setPlayer({...p});
   };
 
-  // --- ARENA FIX: DOĞRUDAN BOT MAÇI BAŞLAT ---
-  const findMatch = () => {
+  // --- ARENA FIX: Online arama + Fallback Bot ---
+  const findMatch = async () => {
       if (!player) return;
       playSound('click');
       setArenaSearching(true);
       
-      // Firebase kontrolü yapmadan direkt 2.5 saniye sonra bot maçını başlat
-      setTimeout(() => {
+      // Fallback Bot (3 saniye içinde eşleşmezse botla başlat)
+      const botTimeout = setTimeout(() => {
           setArenaSearching(false);
-          startBotMatch();
-      }, 2500);
+          startBotMatch(); // Direkt bot maçına at
+      }, 3000);
+
+      // Gerçek Firebase Eşleşmesi
+      if (db) {
+          const roomsRef = ref(db, 'arena_rooms');
+          try {
+              const snapshot = await get(roomsRef);
+              let joined = false;
+              if (snapshot.exists()) {
+                  const rooms = snapshot.val();
+                  for (const rId in rooms) {
+                      if (rooms[rId].status === 'waiting') {
+                          // Odaya gir
+                          clearTimeout(botTimeout); // Botu iptal et
+                          const updates: any = {};
+                          updates[`arena_rooms/${rId}/p2`] = { name: player.name, hp: calcStats(player).maxHp, maxHp: calcStats(player).maxHp, score: player.score };
+                          updates[`arena_rooms/${rId}/status`] = 'playing';
+                          updates[`arena_rooms/${rId}/turn`] = 'p1';
+                          updates[`arena_rooms/${rId}/questionIndex`] = Math.floor(Math.random() * qPool.length);
+                          await update(ref(db), updates);
+                          setRoomID(rId); setPlayerSide('p2'); joined = true;
+                          listenToRoom(rId, 'p2'); notify("Rakip Bulundu!", "success");
+                          break;
+                      }
+                  }
+              }
+              if (!joined) {
+                  // Oda kur
+                  const newRoomRef = push(roomsRef);
+                  const newRoomId = newRoomRef.key;
+                  if (newRoomId) {
+                      await set(newRoomRef, { p1: { name: player.name, hp: calcStats(player).maxHp, maxHp: calcStats(player).maxHp, score: player.score }, status: 'waiting' });
+                      setRoomID(newRoomId); setPlayerSide('p1'); listenToRoom(newRoomId, 'p1');
+                      // Oda kuran kişi de bekler, eğer kimse gelmezse bot devreye girebilir (Burada bot timeout'u iptal etmedik, bekleyen kişi de bota dönebilir)
+                  }
+              }
+          } catch (e) {
+              console.log("Firebase hatası, bota geçiliyor...");
+          }
+      }
   };
 
   const startBotMatch = () => {
       if(!player) return;
       setIsBotMatch(true);
-      setTurn('p1'); // Sıra oyuncuda başlar
+      setTurn('p1');
 
       const botStats = { speed: 3000, acc: 0.5, name: 'Acemi Bot', itemLvl: 0 };
       setBotDifficulty(botStats);
@@ -409,6 +447,45 @@ export default function Game() {
       notify(`Rakip: ${botStats.name}`, "success");
   };
 
+  const listenToRoom = (rId: string, side: 'p1' | 'p2') => {
+      if (!db) return;
+      const roomRef = ref(db, `arena_rooms/${rId}`);
+      onValue(roomRef, (snapshot) => {
+          const data = snapshot.val();
+          if (!data) return;
+          
+          if (data.status === 'playing' && data.p1 && data.p2) {
+              setArenaSearching(false); // Arama ekranını kapat
+              const me = side === 'p1' ? data.p1 : data.p2;
+              const enemy = side === 'p1' ? data.p2 : data.p1;
+              
+              if (data.gameOver) {
+                  if (data.winner === side) {
+                      playSound('win'); notify("KAZANDIN! +100 SKOR", "success");
+                      const np = {...player!}; np.score += 100; np.gold += 100; np.hp = calcStats(np).maxHp; saveGame(np);
+                  } else if (data.winner === 'draw') {
+                      notify("BERABERE!", "success");
+                  } else {
+                      notify("KAYBETTİN...", "error");
+                      const np = {...player!}; np.hp = calcStats(np).maxHp; saveGame(np);
+                  }
+                  setBattle(prev => ({...prev, active: false})); setScreen('menu'); remove(roomRef); return;
+              }
+
+              setTurn(data.turn);
+              const currentQ = qPool[data.questionIndex || 0];
+              setBattle(prev => ({
+                  ...prev, active: true, isArena: true, enemyHp: enemy.hp, maxEnemyHp: enemy.maxHp,
+                  region: { id:'arena', name:'Online Arena', desc:'', x:0, y:0, type:'all', bg:'/arena_bg.png', levels:[] },
+                  level: { id:'pvp', t:'Online Düello', hp: enemy.hp, en: enemy.name, ico:'🤺', diff:'PvP', isBoss:true },
+                  qs: [currentQ], qIndex: 0, timer: 20, isTransitioning: false
+              }));
+              if (player) setPlayer(prev => ({...prev!, hp: me.hp}));
+              setScreen('battle');
+          }
+      });
+  };
+
   const handleAnswer = (correct: boolean) => {
     if (!player || battle.isTransitioning) return;
     if (correct) playSound('correct'); else playSound('wrong');
@@ -417,13 +494,31 @@ export default function Game() {
         setBattle(prev => ({ ...prev, isTransitioning: true }));
         setTimeout(() => { processAnswer(correct); }, 1000); 
     } else {
-        processAnswer(correct);
+        processAnswer(correct); // Online için bekleme yok, direkt gönder
     }
   };
 
   const processAnswer = (correct: boolean) => {
       let nb = { ...battle, isTransitioning: false };
       
+      // ONLINE PVP İŞLEMLERİ
+      if (nb.isArena && roomID && !isBotMatch && db) {
+           if (turn !== playerSide) return;
+           const myMove = correct ? 'correct' : 'wrong';
+           const updates: any = {};
+           updates[`arena_rooms/${roomID}/${playerSide}_move`] = myMove;
+           
+           if (playerSide === 'p1') { 
+               updates[`arena_rooms/${roomID}/turn`] = 'p2'; 
+           } else { 
+               updates[`arena_rooms/${roomID}/turn`] = 'resolving'; 
+               resolveRoundOnline(myMove); // Sadece P2 turu bitirince hesapla
+               return; 
+           }
+           update(ref(db), updates); return;
+      }
+
+      // BOT MAÇI İŞLEMLERİ
       if (nb.isArena && isBotMatch) {
           const myDmg = calcStats(player!).atk;
           const botStats = botDifficulty;
@@ -433,14 +528,12 @@ export default function Game() {
           } else {
               nb.shaking = true;
           }
-          
           if (nb.enemyHp <= 0) {
               playSound('win');
               const np = {...player!}; np.score += 50; np.gold += 50; np.hp = calcStats(np).maxHp; saveGame(np);
               setBattle({...nb, active:false}); notify("BOTU YENDİN! +50 SKOR", "success"); setScreen('menu'); return;
           }
-
-          setTurn('p2'); // Sıra bota geçer
+          setTurn('p2');
           nb.qIndex++; 
           if(nb.qIndex >= nb.qs.length) nb.qIndex = 0;
           nb.timer = 20; 
@@ -448,6 +541,7 @@ export default function Game() {
           return;
       }
 
+      // HİKAYE MODU İŞLEMLERİ
       const np = { ...player! };
       if (correct) {
         nb.combo++; const stats = calcStats(np); let dmg = stats.atk; if (nb.combo > 2) dmg *= 1.5; dmg = Math.floor(dmg);
@@ -502,6 +596,35 @@ export default function Game() {
       setBattle(nb); saveGame(np);
   };
 
+  const resolveRoundOnline = async (p2LastMove: string) => {
+      if (!db || !roomID) return;
+      const roomRef = ref(db, `arena_rooms/${roomID}`);
+      const snapshot = await get(roomRef);
+      const data = snapshot.val();
+      const p1Move = data.p1_move;
+      const p2Move = p2LastMove;
+      let p1Dmg = 0; let p2Dmg = 0; const baseDmg = 50;
+      if (p1Move === 'correct' && p2Move === 'wrong') { p2Dmg = baseDmg; } 
+      else if (p2Move === 'correct' && p1Move === 'wrong') { p1Dmg = baseDmg; } 
+      else if (p1Move === 'correct' && p2Move === 'correct') { } 
+      else { p1Dmg = 20; p2Dmg = 20; }
+      const newP1Hp = Math.max(0, data.p1.hp - p1Dmg);
+      const newP2Hp = Math.max(0, data.p2.hp - p2Dmg);
+      const updates: any = {};
+      updates[`arena_rooms/${roomID}/p1/hp`] = newP1Hp;
+      updates[`arena_rooms/${roomID}/p2/hp`] = newP2Hp;
+      if (newP1Hp <= 0 || newP2Hp <= 0) {
+          updates[`arena_rooms/${roomID}/gameOver`] = true;
+          updates[`arena_rooms/${roomID}/winner`] = newP1Hp > 0 ? 'p1' : (newP2Hp > 0 ? 'p2' : 'draw');
+      } else {
+          updates[`arena_rooms/${roomID}/turn`] = 'p1';
+          updates[`arena_rooms/${roomID}/questionIndex`] = Math.floor(Math.random() * qPool.length);
+          updates[`arena_rooms/${roomID}/p1_move`] = null;
+          updates[`arena_rooms/${roomID}/p2_move`] = null;
+      }
+      await update(ref(db), updates);
+  };
+
   const buyItem = (id:string) => { playSound('click'); const it=itemDB[id]; if(player!.gold>=it.cost){let np={...player!}; np.gold-=it.cost; if(it.type==='joker') np.jokers[it.jokerId!]=(np.jokers[it.jokerId!]||0)+1; else np.inventory.push({...it, uid:Date.now()}); saveGame(np); notify("Satın Alındı!", "success");}else notify("Para Yetersiz!", "error"); };
   const equipItem = (idx:number) => { playSound('click'); if(!player) return; const np={...player}; const it=np.inventory[idx]; if (it.type === 'joker') return notify("Jokerler kuşanılamaz!", "error"); const type = it.type as 'wep' | 'arm' | 'acc'; if(np.equipped[type]) np.inventory.push(np.equipped[type]!); np.equipped[type]=it; np.inventory.splice(idx,1); saveGame(np); notify("Kuşanıldı", "success"); };
   const unequipItem = (type: 'wep' | 'arm' | 'acc') => { playSound('click'); if(!player || !player.equipped[type]) return; const np = { ...player }; np.inventory.push(np.equipped[type]!); np.equipped[type] = null; saveGame(np); notify("Çıkarıldı", "success"); };
@@ -521,7 +644,7 @@ export default function Game() {
       setShowRegionModal(true);
   };
 
-  // --- CİHAZ SEÇİMİ (GÜVENLİ) ---
+  // --- CİHAZ SEÇİMİ ---
   const handleDeviceSelect = (type: 'pc' | 'mobile') => {
       setDevice(type);
       setTimeout(() => {
@@ -530,7 +653,6 @@ export default function Game() {
       }, 50);
   };
 
-  // HYDRATION ERROR FIX: Mounted kontrolü en üstte
   if (!mounted) return <div style={{color:'white', fontSize:'30px', background:'black', height:'100vh', display:'flex', alignItems:'center', justifyContent:'center'}}>Yükleniyor...</div>;
 
   if (!device) {
@@ -545,7 +667,7 @@ export default function Game() {
       )
   }
 
-  // ... (Geri kalan aynı)
+  // ... (Kalan render kodları)
   if (screen === 'auth') {
     return (
       <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.95)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:9999}}>
