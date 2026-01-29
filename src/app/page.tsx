@@ -7,7 +7,7 @@ import { ref, update, query, orderByChild, limitToLast, get, push, set, onValue,
 // --- AYARLAR ---
 const BASE_WIDTH = 1200;
 
-// --- TASARIM (PC İÇİN YATAY - MOBİL İÇİN DİKEY) ---
+// --- TASARIM ---
 const containerStyle = {
     height: '100vh',
     display: 'flex',
@@ -79,7 +79,8 @@ const statsBoxStyle = {
 const NotificationComponent = () => null;
 
 // --- VERİ TİPLERİ ---
-type Item = { id: string; name: string; type: 'wep' | 'arm' | 'acc' | 'joker'; val: number; cost: number; icon: string; jokerId?: string; uid?: number };
+type ItemType = 'wep' | 'arm' | 'acc' | 'joker';
+type Item = { id: string; name: string; type: ItemType; val: number; cost: number; icon: string; jokerId?: string; uid?: number };
 type Costume = { id: string; name: string; icon: string };
 type Question = { q: string; o: string[]; a: number };
 type Level = { id: string; t: string; hp: number; en: string; ico: string; diff: string; isBoss?: boolean };
@@ -120,9 +121,7 @@ const costumeDB: { [key: string]: Costume } = {
 };
 
 const regions: Region[] = [
-    // --- BURASI DÜZELTİLDİ: Eğitim kampının sonuna "isBoss: true" eklendi ki kilit açılsın ---
     { id: 'tut', name: 'Başlangıç Kampı', desc: 'Eğitim', x: 15, y: 80, type: 'iletisim', unlockC: 'default', levels: [{ id: 'l1', t: 'İlk Adım', hp: 50, en: 'Çırak', ico: '👶', diff: 'Kolay' }, { id: 'l2', t: 'Kelime Savaşı', hp: 80, en: 'Kalfa', ico: '👦', diff: 'Orta', isBoss: true }] },
-    
     { id: 'r1', name: 'İletişim Vadisi', desc: 'Sözcükler', x: 35, y: 65, type: 'iletisim', unlockC: 'prince', levels: [{ id: 'l3', t: 'Sözlü Atışma', hp: 120, en: 'Hatip', ico: '🗣️', diff: 'Kolay' }, { id: 'l4', t: 'Kod Çözme', hp: 150, en: 'Şifreci', ico: '🧩', diff: 'Orta' }, { id: 'b1', t: 'Büyük İletişimci', hp: 300, en: 'İletişim Uzmanı', ico: '📡', diff: 'Zor', isBoss: true }] },
     { id: 'r2', name: 'Hikaye Ormanı', desc: 'Olaylar', x: 55, y: 50, type: 'hikaye', unlockC: 'halk', levels: [{ id: 'l5', t: 'Olay Örgüsü', hp: 200, en: 'Kurgucu', ico: '📝', diff: 'Orta' }, { id: 'l6', t: 'Karakter Analizi', hp: 250, en: 'Eleştirmen', ico: '🧐', diff: 'Zor' }, { id: 'b2', t: 'Hikaye Anlatıcısı', hp: 500, en: 'Dede Korkut', ico: '👴', diff: 'Boss', isBoss: true }] },
     { id: 'r3', name: 'Şiir Dağı', desc: 'Duygular', x: 75, y: 35, type: 'siir', unlockC: 'divan', levels: [{ id: 'l7', t: 'Kafiye Bulmaca', hp: 350, en: 'Şair', ico: '✍️', diff: 'Zor' }, { id: 'l8', t: 'Aruz Vezni', hp: 400, en: 'Üstad', ico: '📜', diff: 'Çok Zor' }, { id: 'b3', t: 'Şairler Sultanı', hp: 700, en: 'Baki', ico: '👳', diff: 'Boss', isBoss: true }] },
@@ -245,10 +244,12 @@ export default function Game() {
   };
 
   const toggleFullScreen = (enable: boolean) => {
-    playSound('click');
+    // Sadece tetiklenirse çalışır, hata vermez
     if (!document) return;
-    if (enable) { document.documentElement.requestFullscreen().catch(() => {}); } 
-    else { if (document.fullscreenElement) document.exitFullscreen(); }
+    try {
+        if (enable) { document.documentElement.requestFullscreen().catch(() => {}); } 
+        else { if (document.fullscreenElement) document.exitFullscreen(); }
+    } catch(e){}
   };
 
   useEffect(() => {
@@ -461,7 +462,6 @@ export default function Game() {
         playSound('win');
         np.gold += 100;
         
-        // --- BÖLÜM GEÇME MANTIĞI ---
         if (nb.region && nb.level) {
             const currentProgress = np.regionProgress[nb.region.id] || 0;
             const levelIndex = nb.region.levels.findIndex(l => l.id === nb.level!.id);
@@ -502,36 +502,7 @@ export default function Game() {
   const buyItem = (id:string) => { playSound('click'); const it=itemDB[id]; if(player!.gold>=it.cost){let np={...player!}; np.gold-=it.cost; if(it.type==='joker') np.jokers[it.jokerId!]=(np.jokers[it.jokerId!]||0)+1; else np.inventory.push({...it, uid:Date.now()}); saveGame(np); notify("Satın Alındı!", "success");}else notify("Para Yetersiz!", "error"); };
   const equipItem = (idx:number) => { playSound('click'); if(!player) return; const np={...player}; const it=np.inventory[idx]; if (it.type === 'joker') return notify("Jokerler kuşanılamaz!", "error"); const type = it.type as 'wep' | 'arm' | 'acc'; if(np.equipped[type]) np.inventory.push(np.equipped[type]!); np.equipped[type]=it; np.inventory.splice(idx,1); saveGame(np); notify("Kuşanıldı", "success"); };
   const unequipItem = (type: 'wep' | 'arm' | 'acc') => { playSound('click'); if(!player || !player.equipped[type]) return; const np = { ...player }; np.inventory.push(np.equipped[type]!); np.equipped[type] = null; saveGame(np); notify("Çıkarıldı", "success"); };
-  
-  const useJoker = (type: string) => { 
-      playSound('click'); 
-      if(!player || !battle.active) return; 
-      if((player.jokers[type]||0)<=0) return notify("Jokerin Kalmadı!", "error");
-      
-      let np = {...player}; 
-      np.jokers[type]--; 
-      
-      if(type==='heal') {
-          np.hp = Math.min(np.hp+50, calcStats(np).maxHp);
-          notify("Can Yenilendi! (+50)", "success");
-      }
-      if(type==='skip') { 
-          setBattle(prev=>({...prev, enemyHp:0})); 
-          setTimeout(()=>handleAnswer(true), 100); 
-          notify("Bölüm Geçildi!", "success");
-      } 
-      if(type==='time') {
-          setBattle(prev=>({...prev, timer:prev.timer+20})); 
-          notify("Ek Süre Eklendi!", "success");
-      }
-      if(type==='5050') {
-          setBattle(prev=>({...prev, fiftyUsed:true})); 
-          notify("%50 Kullanıldı!", "success");
-      }
-      
-      saveGame(np); 
-  };
-
+  const useJoker = (type: string) => { playSound('click'); if(!player || !battle.active) return; if((player.jokers[type]||0)<=0) return notify("Jokerin Kalmadı!", "error"); let np = {...player}; np.jokers[type]--; if(type==='heal') { np.hp = Math.min(np.hp+50, calcStats(np).maxHp); notify("Can Yenilendi! (+50)", "success"); } if(type==='skip') { setBattle(prev=>({...prev, enemyHp:0})); setTimeout(()=>handleAnswer(true), 100); notify("Bölüm Geçildi!", "success"); } if(type==='time') { setBattle(prev=>({...prev, timer:prev.timer+20})); notify("Ek Süre Eklendi!", "success"); } if(type==='5050') { setBattle(prev=>({...prev, fiftyUsed:true})); notify("%50 Kullanıldı!", "success"); } saveGame(np); };
   const sellItem = (idx:number) => { playSound('click'); if(!player)return; const np={...player}; np.gold+=np.inventory[idx].cost/2; np.inventory.splice(idx,1); saveGame(np); notify("Satıldı", "success"); };
 
   const isArenaUnlocked = () => {
@@ -562,13 +533,24 @@ export default function Game() {
     setScreen('battle');
   };
 
+  // --- DEVICE BUTON DÜZELTMESİ ---
+  const handleDeviceSelect = (type: 'pc' | 'mobile') => {
+      setDevice(type);
+      playSound('click');
+      if (type === 'mobile') {
+          toggleFullScreen(true);
+      }
+  };
+
+  if (!mounted) return <div style={{color:'white', fontSize:'30px', background:'black', height:'100vh', display:'flex', alignItems:'center', justifyContent:'center'}}>Yükleniyor...</div>;
+
   if (!device) {
       return (
-          <div style={{position:'fixed', inset:0, background:'#000', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'30px', zIndex:99999}}>
+          <div style={{position:'fixed', inset:0, background:'#000', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'30px', zIndex:999999}}>
               <h1 style={{fontSize:'40px', color:'#00eaff', textAlign:'center'}}>CİHAZINI SEÇ</h1>
-              <div style={{display:'flex', gap:'30px', flexDirection: 'column'}}>
-                  <button onClick={() => { setDevice('mobile'); toggleFullScreen(true); }} style={{...actionBtnStyle, background:'#ffcc00', padding:'30px 60px', fontSize:'30px'}}>📱 TELEFON</button>
-                  <button onClick={() => setDevice('pc')} style={{...actionBtnStyle, padding:'30px 60px', fontSize:'30px'}}>💻 BİLGİSAYAR</button>
+              <div style={{display:'flex', gap:'30px', flexDirection: 'column', zIndex: 1000000, pointerEvents: 'auto'}}>
+                  <button onClick={() => handleDeviceSelect('mobile')} style={{...actionBtnStyle, background:'#ffcc00', padding:'30px 60px', fontSize:'30px', cursor: 'pointer', zIndex: 1000001}}>📱 TELEFON</button>
+                  <button onClick={() => handleDeviceSelect('pc')} style={{...actionBtnStyle, padding:'30px 60px', fontSize:'30px', cursor: 'pointer', zIndex: 1000001}}>💻 BİLGİSAYAR</button>
               </div>
           </div>
       )
@@ -588,8 +570,6 @@ export default function Game() {
       </div>
     );
   }
-
-  if(!mounted) return <div style={{color:'white', fontSize:'30px', background:'black', height:'100vh', display:'flex', alignItems:'center', justifyContent:'center'}}>Yükleniyor...</div>;
 
   return (
     <>
