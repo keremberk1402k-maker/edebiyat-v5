@@ -5,7 +5,8 @@ import { db } from '../lib/firebase';
 import { ref, update, query, orderByChild, limitToLast, get, push, set, onValue, remove } from "firebase/database";
 
 // --- AYARLAR ---
-const SAVE_KEY_PREFIX = "edb_save_v32_"; // Versiyon 32 (Temiz Başlangıç)
+const SAVE_KEY_PREFIX = "edb_save_v35_"; // Temiz kurulum
+const BASE_WIDTH = 1200;
 
 // --- TASARIM ---
 const containerStyle = {
@@ -19,32 +20,32 @@ const containerStyle = {
 };
 
 const btnStyle = {
-    padding: '12px 24px',
-    fontSize: '16px',
+    padding: '15px 25px',
+    fontSize: '18px',
     cursor: 'pointer',
-    borderRadius: '12px',
+    borderRadius: '15px',
     border: '1px solid rgba(255,255,255,0.1)',
-    background: 'linear-gradient(145deg, #333, #222)',
+    background: 'linear-gradient(145deg, #2a2a2a, #1a1a1a)',
     color: 'white',
     fontWeight: 'bold',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: '8px',
+    gap: '10px',
     transition: 'all 0.2s ease',
-    boxShadow: '0 4px 6px rgba(0,0,0,0.5)',
-    margin: '5px',
+    boxShadow: '0 5px 15px rgba(0,0,0,0.3)',
+    textTransform: 'uppercase' as const,
     userSelect: 'none' as const
 };
 
 const actionBtnStyle = {
     ...btnStyle,
-    background: 'linear-gradient(145deg, #00eaff, #008c99)',
+    background: 'linear-gradient(90deg, #00eaff, #008c99)',
     color: 'black',
     border: 'none',
-    boxShadow: '0 0 20px rgba(0, 234, 255, 0.4)',
-    fontSize: '20px',
-    padding: '15px 40px'
+    boxShadow: '0 0 25px rgba(0, 234, 255, 0.3)',
+    fontSize: '24px',
+    padding: '25px 40px'
 };
 
 const dangerBtnStyle = { ...btnStyle, background: 'linear-gradient(145deg, #ff0055, #990033)', boxShadow: '0 0 10px rgba(255, 0, 85, 0.3)' };
@@ -60,9 +61,7 @@ const cardStyle = {
     flexDirection: 'column' as const,
     alignItems: 'center',
     gap: '10px',
-    boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.37)',
-    minHeight: '220px',
-    justifyContent: 'space-between'
+    boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.37)'
 };
 
 const statsBoxStyle = {
@@ -80,8 +79,7 @@ const statsBoxStyle = {
 const NotificationComponent = () => null;
 
 // --- VERİ TİPLERİ ---
-type ItemType = 'wep' | 'arm' | 'acc' | 'joker';
-type Item = { id: string; name: string; type: ItemType; val: number; cost: number; icon: string; jokerId?: string; uid?: number };
+type Item = { id: string; name: string; type: 'wep' | 'arm' | 'acc' | 'joker'; val: number; cost: number; icon: string; jokerId?: string; uid?: number };
 type Costume = { id: string; name: string; icon: string };
 type Question = { q: string; o: string[]; a: number };
 type Level = { id: string; t: string; hp: number; en: string; ico: string; diff: string; isBoss?: boolean };
@@ -170,7 +168,6 @@ const shuffleQuestions = (qs: Question[]) => {
 
 export default function Game() {
   const [device, setDevice] = useState<'pc' | 'mobile' | null>(null);
-  const [scale, setScale] = useState(1);
   const [mounted, setMounted] = useState(false);
   const [screen, setScreen] = useState<'auth'|'menu'|'map'|'battle'|'shop'|'inv'|'lib'|'mistake'|'arena'>('auth');
   const [isRegister, setIsRegister] = useState(false);
@@ -254,9 +251,12 @@ export default function Game() {
       const scaleY = (window.innerHeight / BASE_HEIGHT) * 0.95;
       setScale(Math.min(scaleX, scaleY, 1));
     };
-    handleResize();
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    if (typeof window !== 'undefined') {
+        window.addEventListener('resize', handleResize);
+    }
+    return () => {
+        if (typeof window !== 'undefined') window.removeEventListener('resize', handleResize);
+    }
   }, [device]);
 
   useEffect(() => {
@@ -418,7 +418,6 @@ export default function Game() {
                   if (newRoomId) {
                       await set(newRoomRef, { p1: { name: player.name, hp: calcStats(player).maxHp, maxHp: calcStats(player).maxHp, score: player.score }, status: 'waiting' });
                       setRoomID(newRoomId); setPlayerSide('p1'); listenToRoom(newRoomId, 'p1');
-                      // Oda kuran kişi de bekler, eğer kimse gelmezse bot devreye girebilir (Burada bot timeout'u iptal etmedik, bekleyen kişi de bota dönebilir)
                   }
               }
           } catch (e) {
@@ -494,7 +493,7 @@ export default function Game() {
         setBattle(prev => ({ ...prev, isTransitioning: true }));
         setTimeout(() => { processAnswer(correct); }, 1000); 
     } else {
-        processAnswer(correct); // Online için bekleme yok, direkt gönder
+        processAnswer(correct);
     }
   };
 
@@ -512,7 +511,7 @@ export default function Game() {
                updates[`arena_rooms/${roomID}/turn`] = 'p2'; 
            } else { 
                updates[`arena_rooms/${roomID}/turn`] = 'resolving'; 
-               resolveRoundOnline(myMove); // Sadece P2 turu bitirince hesapla
+               resolveRoundOnline(myMove); 
                return; 
            }
            update(ref(db), updates); return;
@@ -632,9 +631,8 @@ export default function Game() {
   const sellItem = (idx:number) => { playSound('click'); if(!player)return; const np={...player}; np.gold+=np.inventory[idx].cost/2; np.inventory.splice(idx,1); saveGame(np); notify("Satıldı", "success"); };
 
   const isArenaUnlocked = () => {
-      const finalRegion = regions.find(r => r.id === 'r4');
-      if(!player || !finalRegion) return false;
-      return (player.regionProgress['r4'] || 0) >= finalRegion.levels.length;
+      // --- DÜZELTME: ARENA HER ZAMAN AÇIK ---
+      return true; // Kilit tamamen kaldırıldı
   };
 
   const handleRegionClick = (r: Region) => {
@@ -644,12 +642,16 @@ export default function Game() {
       setShowRegionModal(true);
   };
 
-  // --- CİHAZ SEÇİMİ ---
+  // --- CİHAZ SEÇİMİ (GÜVENLİ) ---
   const handleDeviceSelect = (type: 'pc' | 'mobile') => {
       setDevice(type);
       setTimeout(() => {
           playSound('click');
-          if (type === 'mobile') toggleFullScreen(true);
+          if (type === 'mobile') {
+              if (typeof window !== 'undefined' && document) {
+                  try { document.documentElement.requestFullscreen().catch(() => {}); } catch(e){}
+              }
+          }
       }, 50);
   };
 
@@ -667,7 +669,6 @@ export default function Game() {
       )
   }
 
-  // ... (Kalan render kodları)
   if (screen === 'auth') {
     return (
       <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.95)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:9999}}>
@@ -745,7 +746,7 @@ export default function Game() {
             {screen === 'menu' && (
                 <div style={{display:'flex', justifyContent:'center', alignItems:'center', height:'100%', flexDirection: device === 'mobile' ? 'column' : 'row', gap: device === 'mobile' ? '20px' : '50px'}}>
                     
-                    {/* SOL TARA: KARAKTER & İSTATİSTİK (PC ODAKLI YATAY DÜZEN) */}
+                    {/* SOL TARA: KARAKTER & İSTATİSTİK */}
                     <div style={{...cardStyle, width: device==='mobile'?'90%':'400px', border:'2px solid #00eaff'}}>
                          <div style={{textAlign:'center'}}>
                             <div style={{fontSize: device==='mobile'?'80px':'120px', cursor:'pointer'}} onClick={()=>setShowWardrobe(true)}>{costumeDB[player!.currentCostume].icon}</div>
@@ -759,11 +760,11 @@ export default function Game() {
                          </div>
                     </div>
 
-                    {/* SAĞ TARAF: BUTONLAR (GENİŞ) */}
+                    {/* SAĞ TARAF: BUTONLAR */}
                     <div style={{display:'grid', gridTemplateColumns: device==='mobile'?'1fr 1fr':'repeat(2, 1fr)', gap:'20px', width: device==='mobile'?'90%':'600px'}}>
-                        {[{id:'map',t:'MACERA',i:'🗺️'}, {id:'arena',t:'ARENA',i:'⚔️',check:true}, {id:'shop',t:'MARKET',i:'🛒'}, {id:'inv',t:'ÇANTA',i:'🎒'}, {id:'lib',t:'BİLGİ',i:'📚'}, {id:'mistake',t:'HATA',i:'📜'}].map(m => (
-                            <div key={m.id} onClick={()=>{ playSound('click'); if(m.check && !isArenaUnlocked()) return notify("Arena için Son Boss'u (Cehalet Kalesi) yenmelisin!", "error"); if(m.id==='arena') fetchLeaderboard(); setScreen(m.id as any); }} style={{...btnStyle, flexDirection:'column', height:'160px', background: 'rgba(255,255,255,0.05)', opacity: (m.check && !isArenaUnlocked()) ? 0.3 : 1, fontSize:'20px'}}>
-                                <div style={{fontSize:'50px'}}>{(m.check && !isArenaUnlocked()) ? '🔒' : m.i}</div>
+                        {[{id:'map',t:'MACERA',i:'🗺️'}, {id:'arena',t:'ARENA',i:'⚔️',check:false}, {id:'shop',t:'MARKET',i:'🛒'}, {id:'inv',t:'ÇANTA',i:'🎒'}, {id:'lib',t:'BİLGİ',i:'📚'}, {id:'mistake',t:'HATA',i:'📜'}].map(m => (
+                            <div key={m.id} onClick={()=>{ playSound('click'); if(m.id==='arena') fetchLeaderboard(); setScreen(m.id as any); }} style={{...btnStyle, flexDirection:'column', height:'160px', background: 'rgba(255,255,255,0.05)', fontSize:'20px'}}>
+                                <div style={{fontSize:'50px'}}>{m.i}</div>
                                 <div style={{marginTop:'10px'}}>{m.t}</div>
                             </div>
                         ))}
@@ -783,7 +784,7 @@ export default function Game() {
                          </div>
                     </div>
 
-                    {/* SAVAŞ ALANI (FERAHLATILMIŞ) */}
+                    {/* SAVAŞ ALANI */}
                     <div style={{flex: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-around'}}>
                          {/* RAKİP */}
                          <div style={{textAlign:'center', animation: battle.shaking ? 'shake 0.3s' : ''}}>
