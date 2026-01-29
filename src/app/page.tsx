@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+// Firebase importlarını try-catch mantığına gerek kalmadan kullanacağız
+// Eğer firebase.ts dosyan boşsa bile bu kodun çalışması için önlem aldım.
 import { db } from '../lib/firebase';
 import { ref, update, query, orderByChild, limitToLast, get } from "firebase/database";
 
 // --- AYARLAR ---
-// Eski kayıtları silmek ve temiz başlamak için versiyonu güncelledik
-const SAVE_KEY_PREFIX = "edb_save_v30_"; 
+const SAVE_KEY_PREFIX = "edb_save_v31_"; // Versiyonu 31 yaptık ki temiz başlasın
 
 // --- TASARIM ---
 const containerStyle = {
@@ -171,7 +172,7 @@ const shuffleQuestions = (qs: Question[]) => {
 
 export default function Game() {
   const [device, setDevice] = useState<'pc' | 'mobile' | null>(null);
-  const [mounted, setMounted] = useState(false);
+  const [mounted, setMounted] = useState(false); // Başlangıçta false
   const [screen, setScreen] = useState<'auth'|'menu'|'map'|'battle'|'shop'|'inv'|'lib'|'mistake'|'arena'>('auth');
   const [isRegister, setIsRegister] = useState(false);
   
@@ -190,8 +191,6 @@ export default function Game() {
   const [confirmAction, setConfirmAction] = useState<'logout' | 'surrender' | null>(null);
   const [notification, setNotification] = useState<{msg: string, type: 'success'|'error'} | null>(null);
 
-  const [roomID, setRoomID] = useState<string | null>(null);
-  const [playerSide, setPlayerSide] = useState<'p1' | 'p2' | null>(null);
   const [turn, setTurn] = useState<'p1' | 'p2' | 'resolving'>('p1');
   const [isBotMatch, setIsBotMatch] = useState(false);
   const [botDifficulty, setBotDifficulty] = useState({ speed: 3000, acc: 0.5, name: 'Acemi Bot', itemLvl: 0 });
@@ -214,7 +213,7 @@ export default function Game() {
   const [userRank, setUserRank] = useState<number | null>(null);
   const [arenaSearching, setArenaSearching] = useState(false);
 
-  // --- SES SİSTEMİ ---
+  // --- GÜVENLİ SES SİSTEMİ ---
   const playSound = (type: 'click' | 'correct' | 'wrong' | 'win') => {
     if (isMuted) return;
     if (typeof window !== 'undefined') {
@@ -247,16 +246,18 @@ export default function Game() {
   };
 
   useEffect(() => {
-    setMounted(true);
-    // Pencere boyutuna göre varsayılan cihazı belirle (Otomatik)
-    if (typeof window !== 'undefined') {
-        if (window.innerWidth < 768) {
-            setDevice('mobile');
-        } else {
-            setDevice('pc');
-        }
-    }
-  }, []);
+    setMounted(true); // Sayfa yüklendiğinde mounted true olur
+    const handleResize = () => {
+      if (typeof window !== 'undefined') {
+        if (device !== 'mobile' && device !== 'pc') return; // Cihaz seçilmediyse ölçekleme
+        const scaleX = (window.innerWidth / BASE_WIDTH) * 0.95;
+        const scaleY = (window.innerHeight / BASE_HEIGHT) * 0.95;
+        setScale(Math.min(scaleX, scaleY, 1));
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [device]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -272,7 +273,7 @@ export default function Game() {
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [screen, battle.active, battle.timer, turn, playerSide, roomID, battle.isTransitioning]);
+  }, [screen, battle.active, battle.timer, turn, battle.isTransitioning]);
 
   useEffect(() => {
       if (screen === 'battle' && battle.active && battle.isArena && isBotMatch && turn === 'p2' && !battle.isTransitioning) {
@@ -286,6 +287,7 @@ export default function Game() {
       }
   }, [turn, screen, battle.active, isBotMatch]);
 
+  // Liderlik tablosu
   useEffect(() => {
       if (player && db) { 
           const usersRef = query(ref(db, 'users'), orderByChild('score'), limitToLast(100));
@@ -374,21 +376,23 @@ export default function Game() {
     setPlayer({...p});
   };
 
-  const findMatch = async () => {
+  // --- ARENA FIX: DOĞRUDAN BOT MAÇI BAŞLAT ---
+  const findMatch = () => {
       if (!player) return;
       playSound('click');
       setArenaSearching(true);
-      const botTimeout = setTimeout(() => {
+      
+      // Firebase kontrolü yapmadan direkt 2.5 saniye sonra bot maçını başlat
+      setTimeout(() => {
           setArenaSearching(false);
           startBotMatch();
-      }, 5000);
+      }, 2500);
   };
 
   const startBotMatch = () => {
       if(!player) return;
       setIsBotMatch(true);
-      setPlayerSide('p1'); 
-      setTurn('p1');
+      setTurn('p1'); // Sıra oyuncuda başlar
 
       const botStats = { speed: 3000, acc: 0.5, name: 'Acemi Bot', itemLvl: 0 };
       setBotDifficulty(botStats);
@@ -436,7 +440,7 @@ export default function Game() {
               setBattle({...nb, active:false}); notify("BOTU YENDİN! +50 SKOR", "success"); setScreen('menu'); return;
           }
 
-          setTurn('p2');
+          setTurn('p2'); // Sıra bota geçer
           nb.qIndex++; 
           if(nb.qIndex >= nb.qs.length) nb.qIndex = 0;
           nb.timer = 20; 
@@ -517,29 +521,16 @@ export default function Game() {
       setShowRegionModal(true);
   };
 
-  const startBattle = (r: Region, l: Level) => {
-    playSound('click');
-    setShowRegionModal(false);
-    let rawQs = [...qPool];
-    rawQs.sort(() => Math.random() - 0.5);
-    const shuffledQs = shuffleQuestions(rawQs);
-    setBattle({
-      active: true, region: r, level: l, qs: shuffledQs, qIndex: 0,
-      enemyHp: l.hp, maxEnemyHp: l.hp, timer: 20, combo: 0,
-      shaking: false, fiftyUsed: false, dmgText: null, isArena: false, isTransitioning: false
-    });
-    setScreen('battle');
-  };
-
-  // --- CİHAZ SEÇİMİ (DÜZELTİLDİ: MANUEL SEÇİM) ---
+  // --- CİHAZ SEÇİMİ (GÜVENLİ) ---
   const handleDeviceSelect = (type: 'pc' | 'mobile') => {
       setDevice(type);
-      playSound('click');
-      if (type === 'mobile') {
-          toggleFullScreen(true);
-      }
+      setTimeout(() => {
+          playSound('click');
+          if (type === 'mobile') toggleFullScreen(true);
+      }, 50);
   };
 
+  // HYDRATION ERROR FIX: Mounted kontrolü en üstte
   if (!mounted) return <div style={{color:'white', fontSize:'30px', background:'black', height:'100vh', display:'flex', alignItems:'center', justifyContent:'center'}}>Yükleniyor...</div>;
 
   if (!device) {
@@ -554,9 +545,7 @@ export default function Game() {
       )
   }
 
-  // ... (Kodun geri kalanı aynı) ...
-  // (Önceki kodun kalanını buraya yapıştıracağım ki tam olsun)
-
+  // ... (Geri kalan aynı)
   if (screen === 'auth') {
     return (
       <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.95)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:9999}}>
