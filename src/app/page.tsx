@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+// Firebase'i güvenli bir şekilde import etmeye çalışıyoruz
 import { db } from '../lib/firebase';
 import { ref, update, query, orderByChild, limitToLast, get, push, set, onValue, remove } from "firebase/database";
 
@@ -79,8 +80,7 @@ const statsBoxStyle = {
 const NotificationComponent = () => null;
 
 // --- VERİ TİPLERİ ---
-type ItemType = 'wep' | 'arm' | 'acc' | 'joker';
-type Item = { id: string; name: string; type: ItemType; val: number; cost: number; icon: string; jokerId?: string; uid?: number };
+type Item = { id: string; name: string; type: 'wep' | 'arm' | 'acc' | 'joker'; val: number; cost: number; icon: string; jokerId?: string; uid?: number };
 type Costume = { id: string; name: string; icon: string };
 type Question = { q: string; o: string[]; a: number };
 type Level = { id: string; t: string; hp: number; en: string; ico: string; diff: string; isBoss?: boolean };
@@ -128,25 +128,17 @@ const regions: Region[] = [
     { id: 'r4', name: 'Efsaneler Arenası', desc: 'Son Durak', x: 85, y: 15, type: 'all', unlockC: 'king', levels: [{ id: 'l9', t: 'Karışık Soru', hp: 600, en: 'Bilge', ico: '🧙', diff: 'Zor' }, { id: 'b4', t: 'Cehalet Kalesi', hp: 1000, en: 'Cehalet Canavarı', ico: '🐲', diff: 'Final Boss', isBoss: true }] },
 ];
 
-const expandedQPool = {
-    iletisim: [
-        { q: "İletişim şemasında 'gönderici'nin diğer adı nedir?", o: ["Kanal", "Kaynak", "Alıcı", "Dönüt"], a: 1 },
-        { q: "Hangisi sözlü iletişim türüdür?", o: ["Mektup", "Panel", "Dilekçe", "Günlük"], a: 1 },
-        { q: "İletişimin başlatıcısı kimdir?", o: ["Alıcı", "Kanal", "Gönderici", "Kod"], a: 2 },
-    ],
-    hikaye: [
-        { q: "Hangisi olay hikayesinin temsilcisidir?", o: ["Sait Faik", "Ömer Seyfettin", "Memduh Şevket", "Nurullah Ataç"], a: 1 },
-        { q: "Durum hikayesinin Türk edebiyatındaki öncüsü kimdir?", o: ["Ömer Seyfettin", "Sait Faik", "Namık Kemal", "Ziya Paşa"], a: 1 },
-        { q: "Dünya edebiyatında hikaye türünün ilk örneği?", o: ["Decameron", "Don Kişot", "Sefiller", "Suç ve Ceza"], a: 0 },
-    ],
-    siir: [
-        { q: "Divan edebiyatında şairlerin şiirlerini topladıkları esere ne denir?", o: ["Cönk", "Divan", "Hamse", "Tezkire"], a: 1 },
-        { q: "İstiklal Marşı hangi vezinle yazılmıştır?", o: ["Hece", "Aruz", "Serbest", "Syllabic"], a: 1 },
-        { q: "Koşuk ve Sagu hangi döneme aittir?", o: ["İslamiyet Öncesi", "Divan", "Halk", "Tanzimat"], a: 0 },
-    ],
-    all: [] as Question[]
-};
-expandedQPool.all = [...expandedQPool.iletisim, ...expandedQPool.hikaye, ...expandedQPool.siir];
+const qPool: Question[] = [
+    { q: "İletişim şemasında 'gönderici'nin diğer adı nedir?", o: ["Kanal", "Kaynak", "Alıcı", "Dönüt"], a: 1 },
+    { q: "Hangisi sözlü iletişim türüdür?", o: ["Mektup", "Panel", "Dilekçe", "Günlük"], a: 1 },
+    { q: "İletişimin başlatıcısı kimdir?", o: ["Alıcı", "Kanal", "Gönderici", "Kod"], a: 2 },
+    { q: "Hangisi olay hikayesinin temsilcisidir?", o: ["Sait Faik", "Ömer Seyfettin", "Memduh Şevket", "Nurullah Ataç"], a: 1 },
+    { q: "Durum hikayesinin Türk edebiyatındaki öncüsü kimdir?", o: ["Ömer Seyfettin", "Sait Faik", "Namık Kemal", "Ziya Paşa"], a: 1 },
+    { q: "Dünya edebiyatında hikaye türünün ilk örneği?", o: ["Decameron", "Don Kişot", "Sefiller", "Suç ve Ceza"], a: 0 },
+    { q: "Divan edebiyatında şairlerin şiirlerini topladıkları esere ne denir?", o: ["Cönk", "Divan", "Hamse", "Tezkire"], a: 1 },
+    { q: "İstiklal Marşı hangi vezinle yazılmıştır?", o: ["Hece", "Aruz", "Serbest", "Syllabic"], a: 1 },
+    { q: "Koşuk ve Sagu hangi döneme aittir?", o: ["İslamiyet Öncesi", "Divan", "Halk", "Tanzimat"], a: 0 },
+];
 
 const libraryDB = [
     { t: "İletişim", c: "Duygu, düşünce ve bilgilerin akla gelebilecek her türlü yolla başkalarına aktarılmasına iletişim denir. Ögeleri: Gönderici, Alıcı, İleti, Kanal, Dönüt, Bağlam." },
@@ -221,6 +213,7 @@ export default function Game() {
   const [userRank, setUserRank] = useState<number | null>(null);
   const [arenaSearching, setArenaSearching] = useState(false);
 
+  // --- GÜVENLİ SES SİSTEMİ ---
   const playSound = (type: 'click' | 'correct' | 'wrong' | 'win') => {
     if (isMuted) return;
     if (typeof window !== 'undefined') {
@@ -233,7 +226,8 @@ export default function Game() {
         try {
             const audio = new Audio(urls[type]);
             audio.volume = 0.5;
-            audio.play().catch(() => {});
+            const playPromise = audio.play();
+            if (playPromise !== undefined) { playPromise.catch(() => {}); }
         } catch (e) {}
     }
   };
@@ -244,12 +238,12 @@ export default function Game() {
   };
 
   const toggleFullScreen = (enable: boolean) => {
-    // Sadece tetiklenirse çalışır, hata vermez
-    if (!document) return;
-    try {
-        if (enable) { document.documentElement.requestFullscreen().catch(() => {}); } 
-        else { if (document.fullscreenElement) document.exitFullscreen(); }
-    } catch(e){}
+    if (typeof window !== 'undefined' && document) {
+        try {
+            if (enable) { document.documentElement.requestFullscreen().catch(() => {}); } 
+            else { if (document.fullscreenElement) document.exitFullscreen(); }
+        } catch(e) {}
+    }
   };
 
   useEffect(() => {
@@ -294,7 +288,7 @@ export default function Game() {
   }, [turn, screen, battle.active, isBotMatch]);
 
   useEffect(() => {
-      if (player) {
+      if (player && db) { // Firebase bağlantısı varsa
           const usersRef = query(ref(db, 'users'), orderByChild('score'), limitToLast(100));
           get(usersRef).then((snapshot) => {
               if (snapshot.exists()) {
@@ -305,7 +299,7 @@ export default function Game() {
                   const myRank = list.findIndex(u => u.name === player.name);
                   setUserRank(myRank + 1);
               }
-          });
+          }).catch(e => console.log("Firebase hatası (Önemli değil):", e));
       }
   }, [player?.score, screen]); 
 
@@ -343,18 +337,21 @@ export default function Game() {
   const handleAuth = () => {
     playSound('click');
     if (!authName || !authPass) return notify("Boş alan bırakma!", "error");
-    const key = `edb_final_v25_${authName}`;
+    const key = `edb_final_v26_${authName}`;
     
     if (authName === "admin" && authPass === "1234") {
         const admin: Player = { name: "ADMIN", pass: "1234", hp: 9999, maxHp: 9999, gold: 99999, xp: 0, maxXp: 100, lvl: 99, baseAtk: 999, inventory: [], equipped: {wep:null,arm:null,acc:null}, jokers: {'5050':99,'heal':99,'skip':99,'time':99}, mistakes: [], score: 9999, unlockedRegions: ['tut','r1','r2','r3','r4'], regionProgress: {'tut':2,'r1':4,'r2':4,'r3':4,'r4':3}, unlockedCostumes: Object.keys(costumeDB), currentCostume: 'default', tutorialSeen: true };
-        setPlayer(admin); update(ref(db, 'users/' + authName), { name: authName, score: 9999 }); setScreen('menu'); return;
+        setPlayer(admin); 
+        // Firebase varsa yaz, yoksa geç
+        if (db) update(ref(db, 'users/' + authName), { name: authName, score: 9999 }).catch(()=>{});
+        setScreen('menu'); return;
     }
 
     if (isRegister) {
       if (localStorage.getItem(key)) return notify("Bu isim dolu!", "error");
       const newP: Player = { name: authName, pass: authPass, hp: 100, maxHp: 100, gold: 0, xp: 0, maxXp: 100, lvl: 1, baseAtk: 20, inventory: [], equipped: {wep:null,arm:null,acc:null}, jokers: {'5050':1,'heal':1,'skip':1,'time':1}, mistakes: [], score: 0, unlockedRegions: ['tut'], regionProgress: {'tut': 0}, unlockedCostumes: ['default'], currentCostume: 'default', tutorialSeen: false };
       localStorage.setItem(key, JSON.stringify(newP));
-      update(ref(db, 'users/' + authName), { name: authName, score: 0 });
+      if (db) update(ref(db, 'users/' + authName), { name: authName, score: 0 }).catch(()=>{});
       setIsRegister(false); notify("Kayıt Başarılı!", "success");
     } else {
       const d = localStorage.getItem(key);
@@ -362,15 +359,15 @@ export default function Game() {
       const p = JSON.parse(d);
       if (p.pass !== authPass) return notify("Şifre yanlış!", "error");
       if(!p.unlockedRegions) p.unlockedRegions = ['tut'];
-      update(ref(db, 'users/' + authName), { name: authName, score: p.score });
+      if (db) update(ref(db, 'users/' + authName), { name: authName, score: p.score }).catch(()=>{});
       setPlayer(p); setScreen('menu'); if(!p.tutorialSeen) setShowTutorial(true);
     }
   };
 
   const saveGame = (p: Player) => {
     if(p.name !== "ADMIN") {
-        localStorage.setItem(`edb_final_v25_${p.name}`, JSON.stringify(p));
-        update(ref(db, 'users/' + p.name), { score: p.score });
+        localStorage.setItem(`edb_final_v26_${p.name}`, JSON.stringify(p));
+        if (db) update(ref(db, 'users/' + p.name), { score: p.score }).catch(()=>{});
     }
     setPlayer({...p});
   };
@@ -398,7 +395,7 @@ export default function Game() {
           active: true, isArena: true,
           region: { id:'arena', name:'Online Arena', desc:'', x:0, y:0, type:'all', bg:'/arena_bg.png', levels:[] },
           level: { id:'bot', t:'Bot Savaşı', hp: myStats.maxHp, en: botStats.name + ` (Eşya: +${botStats.itemLvl})`, ico:'🤖', diff:'PvE', isBoss:true },
-          qs: shuffleQuestions([...expandedQPool.all]).slice(0, 10),
+          qs: shuffleQuestions([...qPool]).slice(0, 10),
           qIndex: 0, enemyHp: myStats.maxHp, maxEnemyHp: myStats.maxHp,
           timer: 20, combo: 0, shaking: false, fiftyUsed: false, dmgText: null, isTransitioning: false
       });
@@ -521,8 +518,7 @@ export default function Game() {
   const startBattle = (r: Region, l: Level) => {
     playSound('click');
     setShowRegionModal(false);
-    let rawQs = r.type === 'all' ? [...expandedQPool.all] : [...(expandedQPool[r.type] || [])];
-    rawQs = [...rawQs, ...rawQs]; 
+    let rawQs = [...qPool];
     rawQs.sort(() => Math.random() - 0.5);
     const shuffledQs = shuffleQuestions(rawQs);
     setBattle({
@@ -533,7 +529,7 @@ export default function Game() {
     setScreen('battle');
   };
 
-  // --- DEVICE BUTON DÜZELTMESİ ---
+  // --- GÜVENLİ CİHAZ SEÇİMİ ---
   const handleDeviceSelect = (type: 'pc' | 'mobile') => {
       setDevice(type);
       playSound('click');
