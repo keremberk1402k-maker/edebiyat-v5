@@ -2,10 +2,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { db } from '../lib/firebase';
-import { ref, update, query, orderByChild, limitToLast, get, push, set, onValue, remove } from "firebase/database";
+import { ref, update, query, orderByChild, limitToLast, get } from "firebase/database";
 
 // --- AYARLAR ---
-const BASE_WIDTH = 1200;
+// Eski kayıtları silmek ve temiz başlamak için versiyonu güncelledik
+const SAVE_KEY_PREFIX = "edb_save_v30_"; 
 
 // --- TASARIM ---
 const containerStyle = {
@@ -80,7 +81,8 @@ const statsBoxStyle = {
 const NotificationComponent = () => null;
 
 // --- VERİ TİPLERİ ---
-type Item = { id: string; name: string; type: 'wep' | 'arm' | 'acc' | 'joker'; val: number; cost: number; icon: string; jokerId?: string; uid?: number };
+type ItemType = 'wep' | 'arm' | 'acc' | 'joker';
+type Item = { id: string; name: string; type: ItemType; val: number; cost: number; icon: string; jokerId?: string; uid?: number };
 type Costume = { id: string; name: string; icon: string };
 type Question = { q: string; o: string[]; a: number };
 type Level = { id: string; t: string; hp: number; en: string; ico: string; diff: string; isBoss?: boolean };
@@ -169,7 +171,6 @@ const shuffleQuestions = (qs: Question[]) => {
 
 export default function Game() {
   const [device, setDevice] = useState<'pc' | 'mobile' | null>(null);
-  const [scale, setScale] = useState(1);
   const [mounted, setMounted] = useState(false);
   const [screen, setScreen] = useState<'auth'|'menu'|'map'|'battle'|'shop'|'inv'|'lib'|'mistake'|'arena'>('auth');
   const [isRegister, setIsRegister] = useState(false);
@@ -213,7 +214,7 @@ export default function Game() {
   const [userRank, setUserRank] = useState<number | null>(null);
   const [arenaSearching, setArenaSearching] = useState(false);
 
-  // --- SES SİSTEMİ (GÜVENLİ) ---
+  // --- SES SİSTEMİ ---
   const playSound = (type: 'click' | 'correct' | 'wrong' | 'win') => {
     if (isMuted) return;
     if (typeof window !== 'undefined') {
@@ -247,16 +248,15 @@ export default function Game() {
 
   useEffect(() => {
     setMounted(true);
-    const handleResize = () => {
-      if (device === 'mobile') { setScale(1); return; }
-      const scaleX = (window.innerWidth / BASE_WIDTH) * 0.95;
-      const scaleY = (window.innerHeight / BASE_HEIGHT) * 0.95;
-      setScale(Math.min(scaleX, scaleY, 1));
-    };
-    handleResize();
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [device]);
+    // Pencere boyutuna göre varsayılan cihazı belirle (Otomatik)
+    if (typeof window !== 'undefined') {
+        if (window.innerWidth < 768) {
+            setDevice('mobile');
+        } else {
+            setDevice('pc');
+        }
+    }
+  }, []);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -287,7 +287,7 @@ export default function Game() {
   }, [turn, screen, battle.active, isBotMatch]);
 
   useEffect(() => {
-      if (player && db) { // Firebase bağlantısı varsa
+      if (player && db) { 
           const usersRef = query(ref(db, 'users'), orderByChild('score'), limitToLast(100));
           get(usersRef).then((snapshot) => {
               if (snapshot.exists()) {
@@ -298,7 +298,7 @@ export default function Game() {
                   const myRank = list.findIndex(u => u.name === player.name);
                   setUserRank(myRank + 1);
               }
-          }).catch(e => console.log("Firebase hatası (Önemli değil):", e));
+          }).catch(() => {});
       }
   }, [player?.score, screen]); 
 
@@ -336,12 +336,11 @@ export default function Game() {
   const handleAuth = () => {
     playSound('click');
     if (!authName || !authPass) return notify("Boş alan bırakma!", "error");
-    const key = `edb_final_v27_${authName}`;
+    const key = `${SAVE_KEY_PREFIX}${authName}`;
     
     if (authName === "admin" && authPass === "1234") {
         const admin: Player = { name: "ADMIN", pass: "1234", hp: 9999, maxHp: 9999, gold: 99999, xp: 0, maxXp: 100, lvl: 99, baseAtk: 999, inventory: [], equipped: {wep:null,arm:null,acc:null}, jokers: {'5050':99,'heal':99,'skip':99,'time':99}, mistakes: [], score: 9999, unlockedRegions: ['tut','r1','r2','r3','r4'], regionProgress: {'tut':2,'r1':4,'r2':4,'r3':4,'r4':3}, unlockedCostumes: Object.keys(costumeDB), currentCostume: 'default', tutorialSeen: true };
         setPlayer(admin); 
-        // Firebase varsa yaz, yoksa geç
         if (db) update(ref(db, 'users/' + authName), { name: authName, score: 9999 }).catch(()=>{});
         setScreen('menu'); return;
     }
@@ -355,17 +354,21 @@ export default function Game() {
     } else {
       const d = localStorage.getItem(key);
       if (!d) return notify("Kayıt bulunamadı!", "error");
-      const p = JSON.parse(d);
-      if (p.pass !== authPass) return notify("Şifre yanlış!", "error");
-      if(!p.unlockedRegions) p.unlockedRegions = ['tut'];
-      if (db) update(ref(db, 'users/' + authName), { name: authName, score: p.score }).catch(()=>{});
-      setPlayer(p); setScreen('menu'); if(!p.tutorialSeen) setShowTutorial(true);
+      try {
+          const p = JSON.parse(d);
+          if (p.pass !== authPass) return notify("Şifre yanlış!", "error");
+          if(!p.unlockedRegions) p.unlockedRegions = ['tut'];
+          if (db) update(ref(db, 'users/' + authName), { name: authName, score: p.score }).catch(()=>{});
+          setPlayer(p); setScreen('menu'); if(!p.tutorialSeen) setShowTutorial(true);
+      } catch (e) {
+          notify("Kayıt dosyası bozuk, yeniden oluşturun.", "error");
+      }
     }
   };
 
   const saveGame = (p: Player) => {
     if(p.name !== "ADMIN") {
-        localStorage.setItem(`edb_final_v27_${p.name}`, JSON.stringify(p));
+        localStorage.setItem(`${SAVE_KEY_PREFIX}${p.name}`, JSON.stringify(p));
         if (db) update(ref(db, 'users/' + p.name), { score: p.score }).catch(()=>{});
     }
     setPlayer({...p});
@@ -528,18 +531,13 @@ export default function Game() {
     setScreen('battle');
   };
 
-  // --- DEVICE BUTON DÜZELTMESİ (GÜVENLİ MOD) ---
+  // --- CİHAZ SEÇİMİ (DÜZELTİLDİ: MANUEL SEÇİM) ---
   const handleDeviceSelect = (type: 'pc' | 'mobile') => {
-      // 1. Önce durumu değiştir (Kritik İşlem)
       setDevice(type);
-      
-      // 2. Yan etkileri gecikmeli yap (Hata verirse oyun durmasın)
-      setTimeout(() => {
-          playSound('click');
-          if (type === 'mobile') {
-              toggleFullScreen(true);
-          }
-      }, 50);
+      playSound('click');
+      if (type === 'mobile') {
+          toggleFullScreen(true);
+      }
   };
 
   if (!mounted) return <div style={{color:'white', fontSize:'30px', background:'black', height:'100vh', display:'flex', alignItems:'center', justifyContent:'center'}}>Yükleniyor...</div>;
@@ -556,8 +554,8 @@ export default function Game() {
       )
   }
 
-  // ... (Geri kalan render kodları aynı, sadece handleDeviceSelect fonksiyonu güncellendi) ...
-  // (Kodun devamını aşağıda tekrar veriyorum tam olması için)
+  // ... (Kodun geri kalanı aynı) ...
+  // (Önceki kodun kalanını buraya yapıştıracağım ki tam olsun)
 
   if (screen === 'auth') {
     return (
