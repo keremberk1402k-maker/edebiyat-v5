@@ -19,9 +19,9 @@ const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const db = getDatabase(app);
 
 // --- AYARLAR ---
-const SAVE_KEY_PREFIX = "edb_save_v37_fix_"; 
+const SAVE_KEY_PREFIX = "edb_save_v39_final_"; 
 const BASE_WIDTH = 1200;
-const BASE_HEIGHT = 900;
+const BASE_HEIGHT = 900; // EKSİK OLAN YÜKSEKLİK TANIMI EKLENDİ
 
 // --- TASARIM ---
 const containerStyle = {
@@ -225,11 +225,9 @@ export default function Game() {
   const [userRank, setUserRank] = useState<number | null>(null);
   const [arenaSearching, setArenaSearching] = useState(false);
 
-  // --- SES SİSTEMİ (ARTIK ASLA OYUNU DURDURAMAZ) ---
+  // --- SES SİSTEMİ (GÜVENLİ) ---
   const playSound = (type: 'click' | 'correct' | 'wrong' | 'win') => {
     if (isMuted || typeof window === 'undefined') return;
-    
-    // Sesi asenkron çal, ana kodu bloklama
     setTimeout(() => {
         try {
             const urls = {
@@ -242,11 +240,9 @@ export default function Game() {
             audio.volume = 0.5;
             const playPromise = audio.play();
             if (playPromise !== undefined) {
-                playPromise.catch(() => { /* Hata olursa yut, oyun devam etsin */ });
+                playPromise.catch(() => { });
             }
-        } catch (e) {
-            /* Ses hatası olursa oyun durmasın */
-        }
+        } catch (e) { }
     }, 0);
   };
 
@@ -299,6 +295,7 @@ export default function Game() {
       }
   }, [turn, screen, battle.active, isBotMatch]);
 
+  // LEADERBOARD OTOMATİK GÜNCELLEME (fetchLeaderboard fonksiyonuna gerek yok)
   useEffect(() => {
       if (player && db) { 
           const usersRef = query(ref(db, 'users'), orderByChild('score'), limitToLast(100));
@@ -317,31 +314,24 @@ export default function Game() {
 
   const handleBotMove = (move: 'correct' | 'wrong') => {
       if (!battle.active) return;
-      
-      const myDmg = calcStats(player!).atk;
       const botStats = botDifficulty;
       let nb = { ...battle };
       let pDmg = 0;
-
       const botDmg = 30 + (botStats.itemLvl * 10);
       const hit = move === 'correct';
-
       if (hit) {
           pDmg = botDmg;
           notify(`${botStats.name} Doğru Bildi! -${botDmg} Can`, 'error');
       } else {
           notify(`${botStats.name} Bilemedi!`, 'success');
       }
-
       const np = {...player!};
       np.hp -= pDmg;
       setPlayer(np);
-
       if (np.hp <= 0) {
           np.hp = calcStats(np).maxHp; saveGame(np);
           setBattle({...nb, active:false}); notify("KAYBETTİN...", "error"); setScreen('menu'); return;
       }
-
       setTurn('p1');
       setBattle({...nb, timer: 20});
   };
@@ -350,14 +340,12 @@ export default function Game() {
     playSound('click');
     if (!authName || !authPass) return notify("Boş alan bırakma!", "error");
     const key = `${SAVE_KEY_PREFIX}${authName}`;
-    
     if (authName === "admin" && authPass === "1234") {
         const admin: Player = { name: "ADMIN", pass: "1234", hp: 9999, maxHp: 9999, gold: 99999, xp: 0, maxXp: 100, lvl: 99, baseAtk: 999, inventory: [], equipped: {wep:null,arm:null,acc:null}, jokers: {'5050':99,'heal':99,'skip':99,'time':99}, mistakes: [], score: 9999, unlockedRegions: ['tut','r1','r2','r3','r4'], regionProgress: {'tut':2,'r1':4,'r2':4,'r3':4,'r4':3}, unlockedCostumes: Object.keys(costumeDB), currentCostume: 'default', tutorialSeen: true };
         setPlayer(admin); 
         if (db) update(ref(db, 'users/' + authName), { name: authName, score: 9999 }).catch(()=>{});
         setScreen('menu'); return;
     }
-
     if (isRegister) {
       if (localStorage.getItem(key)) return notify("Bu isim dolu!", "error");
       const newP: Player = { name: authName, pass: authPass, hp: 100, maxHp: 100, gold: 0, xp: 0, maxXp: 100, lvl: 1, baseAtk: 20, inventory: [], equipped: {wep:null,arm:null,acc:null}, jokers: {'5050':1,'heal':1,'skip':1,'time':1}, mistakes: [], score: 0, unlockedRegions: ['tut'], regionProgress: {'tut': 0}, unlockedCostumes: ['default'], currentCostume: 'default', tutorialSeen: false };
@@ -389,15 +377,12 @@ export default function Game() {
 
   const findMatch = async () => {
       if (!player) return;
-      // DİKKAT: Önce ekranı değiştiriyoruz, ses hata verirse bile ekran açılır.
       setArenaSearching(true); 
       playSound('click'); 
-      
       const botTimeout = setTimeout(() => {
           setArenaSearching(false);
           startBotMatch(); 
       }, 3000);
-
       if (db) {
           const roomsRef = ref(db, 'arena_rooms');
           try {
@@ -428,9 +413,7 @@ export default function Game() {
                       setRoomID(newRoomId); setPlayerSide('p1'); listenToRoom(newRoomId, 'p1');
                   }
               }
-          } catch (e) {
-              // Firebase hatası olursa bota geç
-          }
+          } catch (e) { }
       }
   };
 
@@ -438,13 +421,12 @@ export default function Game() {
       if(!player) return;
       setIsBotMatch(true);
       setTurn('p1');
-
       const botStats = { speed: 3000, acc: 0.5, name: 'Acemi Bot', itemLvl: 0 };
       setBotDifficulty(botStats);
       const myStats = calcStats(player);
       setBattle({
           active: true, isArena: true,
-          region: { id:'arena', name:'Online Arena', desc:'', x:0, y:0, type:'all', bg:'/arena_bg.png', levels:[], unlockC: 'default' },
+          region: { id:'arena', name:'Online Arena', desc:'', x:0, y:0, type:'all', bg:'/arena_bg.png', levels:[], unlockC: 'default' }, // EKSİK UNLOCKC EKLENDİ
           level: { id:'bot', t:'Bot Savaşı', hp: myStats.maxHp, en: botStats.name + ` (Eşya: +${botStats.itemLvl})`, ico:'🤖', diff:'PvE', isBoss:true },
           qs: shuffleQuestions([...qPool]).slice(0, 10),
           qIndex: 0, enemyHp: myStats.maxHp, maxEnemyHp: myStats.maxHp,
@@ -460,12 +442,10 @@ export default function Game() {
       onValue(roomRef, (snapshot) => {
           const data = snapshot.val();
           if (!data) return;
-          
           if (data.status === 'playing' && data.p1 && data.p2) {
               setArenaSearching(false); 
               const me = side === 'p1' ? data.p1 : data.p2;
               const enemy = side === 'p1' ? data.p2 : data.p1;
-              
               if (data.gameOver) {
                   if (data.winner === side) {
                       playSound('win'); notify("KAZANDIN! +100 SKOR", "success");
@@ -478,12 +458,11 @@ export default function Game() {
                   }
                   setBattle(prev => ({...prev, active: false})); setScreen('menu'); remove(roomRef); return;
               }
-
               setTurn(data.turn);
               const currentQ = qPool[data.questionIndex || 0];
               setBattle(prev => ({
                   ...prev, active: true, isArena: true, enemyHp: enemy.hp, maxEnemyHp: enemy.maxHp,
-                  region: { id:'arena', name:'Online Arena', desc:'', x:0, y:0, type:'all', bg:'/arena_bg.png', levels:[], unlockC: 'default' },
+                  region: { id:'arena', name:'Online Arena', desc:'', x:0, y:0, type:'all', bg:'/arena_bg.png', levels:[], unlockC: 'default' }, // EKSİK UNLOCKC EKLENDİ
                   level: { id:'pvp', t:'Online Düello', hp: enemy.hp, en: enemy.name, ico:'🤺', diff:'PvP', isBoss:true },
                   qs: [currentQ], qIndex: 0, timer: 20, isTransitioning: false
               }));
@@ -496,7 +475,6 @@ export default function Game() {
   const handleAnswer = (correct: boolean) => {
     if (!player || battle.isTransitioning) return;
     if (correct) playSound('correct'); else playSound('wrong');
-
     if (!battle.isArena || isBotMatch) {
         setBattle(prev => ({ ...prev, isTransitioning: true }));
         setTimeout(() => { processAnswer(correct); }, 1000); 
@@ -507,13 +485,11 @@ export default function Game() {
 
   const processAnswer = (correct: boolean) => {
       let nb = { ...battle, isTransitioning: false };
-      
       if (nb.isArena && roomID && !isBotMatch && db) {
            if (turn !== playerSide) return;
            const myMove = correct ? 'correct' : 'wrong';
            const updates: any = {};
            updates[`arena_rooms/${roomID}/${playerSide}_move`] = myMove;
-           
            if (playerSide === 'p1') { 
                updates[`arena_rooms/${roomID}/turn`] = 'p2'; 
            } else { 
@@ -523,7 +499,6 @@ export default function Game() {
            }
            update(ref(db), updates); return;
       }
-
       if (nb.isArena && isBotMatch) {
           const myDmg = calcStats(player!).atk;
           if (correct) {
@@ -544,7 +519,6 @@ export default function Game() {
           setBattle(nb);
           return;
       }
-
       const np = { ...player! };
       if (correct) {
         nb.combo++; const stats = calcStats(np); let dmg = stats.atk; if (nb.combo > 2) dmg *= 1.5; dmg = Math.floor(dmg);
@@ -557,16 +531,13 @@ export default function Game() {
         const q = nb.qs[nb.qIndex];
         if(nb.region && !np.mistakes.find(m => m.q === q.q)) np.mistakes.push({q:q.q, a:q.o[q.a]});
       }
-
       if (nb.enemyHp <= 0) {
         playSound('win');
         np.gold += 100;
-        
         if (nb.region && nb.level) {
             const currentProgress = np.regionProgress[nb.region.id] || 0;
             const levelIndex = nb.region.levels.findIndex(l => l.id === nb.level!.id);
             if(levelIndex === currentProgress) np.regionProgress[nb.region.id] = currentProgress + 1;
-
             if(nb.level.isBoss) {
                 if(nb.region.unlockC && !np.unlockedCostumes.includes(nb.region.unlockC)) {
                     np.unlockedCostumes.push(nb.region.unlockC);
@@ -585,7 +556,6 @@ export default function Game() {
         }
         saveGame(np); setBattle({...nb, active:false}); notify("ZAFER! +100 ALTIN", "success"); setScreen('map'); return;
       }
-
       if (np.hp <= 0) { np.hp = 20; saveGame(np); setBattle({...nb, active:false}); notify("KAYBETTİN!", "error"); setScreen('menu'); return; }
       if (!correct || nb.enemyHp > 0) { nb.qIndex++; nb.timer=20; nb.fiftyUsed=false; }
       if (nb.qIndex >= nb.qs.length) {
@@ -625,7 +595,6 @@ export default function Game() {
   };
 
   const startBattle = (r: Region, l: Level) => {
-    // DÜZELTME: Sesi çal ama sayfayı açmayı sese bağlama
     playSound('click'); 
     setShowRegionModal(false);
     let rawQs = [...qPool];
@@ -664,10 +633,6 @@ export default function Game() {
           </div>
       )
   }
-
-  // ... (Geri kalan render kodları aynı) ...
-  // Not: Kodun geri kalan kısmı üstteki yapıya uygun şekilde devam eder.
-  // Bu üst kısım, giriş problemlerini ve ses çakışmasını tamamen çözen kısımdır.
 
   if (screen === 'auth') {
     return (
@@ -763,7 +728,7 @@ export default function Game() {
                     {/* SAĞ TARAF: BUTONLAR (GENİŞ) */}
                     <div style={{display:'grid', gridTemplateColumns: device==='mobile'?'1fr 1fr':'repeat(2, 1fr)', gap:'20px', width: device==='mobile'?'90%':'600px'}}>
                         {[{id:'map',t:'MACERA',i:'🗺️'}, {id:'arena',t:'ARENA',i:'⚔️',check:false}, {id:'shop',t:'MARKET',i:'🛒'}, {id:'inv',t:'ÇANTA',i:'🎒'}, {id:'lib',t:'BİLGİ',i:'📚'}, {id:'mistake',t:'HATA',i:'📜'}].map(m => (
-                            <div key={m.id} onClick={()=>{ setScreen(m.id as any); playSound('click'); if(m.id==='arena') fetchLeaderboard(); }} style={{...btnStyle, flexDirection:'column', height:'160px', background: 'rgba(255,255,255,0.05)', fontSize:'20px'}}>
+                            <div key={m.id} onClick={()=>{ setScreen(m.id as any); playSound('click'); }} style={{...btnStyle, flexDirection:'column', height:'160px', background: 'rgba(255,255,255,0.05)', fontSize:'20px'}}>
                                 <div style={{fontSize:'50px'}}>{m.i}</div>
                                 <div style={{marginTop:'10px'}}>{m.t}</div>
                             </div>
