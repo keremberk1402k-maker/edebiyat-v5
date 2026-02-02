@@ -444,7 +444,7 @@ export default function Game() {
       const myStats = calcStats(player);
       setBattle({
           active: true, isArena: true,
-          region: { id:'arena', name:'Online Arena', desc:'', x:0, y:0, type:'all', bg:'/arena_bg.png', levels:[] },
+          region: { id:'arena', name:'Online Arena', desc:'', x:0, y:0, type:'all', bg:'/arena_bg.png', levels:[], unlockC: 'default' },
           level: { id:'bot', t:'Bot Savaşı', hp: myStats.maxHp, en: botStats.name + ` (Eşya: +${botStats.itemLvl})`, ico:'🤖', diff:'PvE', isBoss:true },
           qs: shuffleQuestions([...qPool]).slice(0, 10),
           qIndex: 0, enemyHp: myStats.maxHp, maxEnemyHp: myStats.maxHp,
@@ -483,7 +483,7 @@ export default function Game() {
               const currentQ = qPool[data.questionIndex || 0];
               setBattle(prev => ({
                   ...prev, active: true, isArena: true, enemyHp: enemy.hp, maxEnemyHp: enemy.maxHp,
-                  region: { id:'arena', name:'Online Arena', desc:'', x:0, y:0, type:'all', bg:'/arena_bg.png', levels:[] },
+                  region: { id:'arena', name:'Online Arena', desc:'', x:0, y:0, type:'all', bg:'/arena_bg.png', levels:[], unlockC: 'default' },
                   level: { id:'pvp', t:'Online Düello', hp: enemy.hp, en: enemy.name, ico:'🤺', diff:'PvP', isBoss:true },
                   qs: [currentQ], qIndex: 0, timer: 20, isTransitioning: false
               }));
