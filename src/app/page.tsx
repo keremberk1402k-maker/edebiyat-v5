@@ -19,9 +19,9 @@ const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const db = getDatabase(app);
 
 // --- AYARLAR ---
-const SAVE_KEY_PREFIX = "edb_save_v39_final_"; 
+const SAVE_KEY_PREFIX = "edb_save_v40_final_"; 
 const BASE_WIDTH = 1200;
-const BASE_HEIGHT = 900; // EKSİK OLAN YÜKSEKLİK TANIMI EKLENDİ
+const BASE_HEIGHT = 900;
 
 // --- TASARIM ---
 const containerStyle = {
@@ -225,7 +225,7 @@ export default function Game() {
   const [userRank, setUserRank] = useState<number | null>(null);
   const [arenaSearching, setArenaSearching] = useState(false);
 
-  // --- SES SİSTEMİ (GÜVENLİ) ---
+  // --- SES SİSTEMİ ---
   const playSound = (type: 'click' | 'correct' | 'wrong' | 'win') => {
     if (isMuted || typeof window === 'undefined') return;
     setTimeout(() => {
@@ -295,7 +295,6 @@ export default function Game() {
       }
   }, [turn, screen, battle.active, isBotMatch]);
 
-  // LEADERBOARD OTOMATİK GÜNCELLEME (fetchLeaderboard fonksiyonuna gerek yok)
   useEffect(() => {
       if (player && db) { 
           const usersRef = query(ref(db, 'users'), orderByChild('score'), limitToLast(100));
@@ -426,7 +425,7 @@ export default function Game() {
       const myStats = calcStats(player);
       setBattle({
           active: true, isArena: true,
-          region: { id:'arena', name:'Online Arena', desc:'', x:0, y:0, type:'all', bg:'/arena_bg.png', levels:[], unlockC: 'default' }, // EKSİK UNLOCKC EKLENDİ
+          region: { id:'arena', name:'Online Arena', desc:'', x:0, y:0, type:'all', bg:'/arena_bg.png', levels:[], unlockC: 'default' },
           level: { id:'bot', t:'Bot Savaşı', hp: myStats.maxHp, en: botStats.name + ` (Eşya: +${botStats.itemLvl})`, ico:'🤖', diff:'PvE', isBoss:true },
           qs: shuffleQuestions([...qPool]).slice(0, 10),
           qIndex: 0, enemyHp: myStats.maxHp, maxEnemyHp: myStats.maxHp,
@@ -462,7 +461,7 @@ export default function Game() {
               const currentQ = qPool[data.questionIndex || 0];
               setBattle(prev => ({
                   ...prev, active: true, isArena: true, enemyHp: enemy.hp, maxEnemyHp: enemy.maxHp,
-                  region: { id:'arena', name:'Online Arena', desc:'', x:0, y:0, type:'all', bg:'/arena_bg.png', levels:[], unlockC: 'default' }, // EKSİK UNLOCKC EKLENDİ
+                  region: { id:'arena', name:'Online Arena', desc:'', x:0, y:0, type:'all', bg:'/arena_bg.png', levels:[], unlockC: 'default' }, 
                   level: { id:'pvp', t:'Online Düello', hp: enemy.hp, en: enemy.name, ico:'🤺', diff:'PvP', isBoss:true },
                   qs: [currentQ], qIndex: 0, timer: 20, isTransitioning: false
               }));
@@ -592,6 +591,14 @@ export default function Game() {
           updates[`arena_rooms/${roomID}/p2_move`] = null;
       }
       await update(ref(db), updates);
+  };
+
+  // EKSİK OLAN FONKSİYON EKLENDİ (V40)
+  const handleRegionClick = (r: Region) => {
+      playSound('click');
+      if (!player!.unlockedRegions.includes(r.id)) return notify("Önceki bölgeleri tamamla!", "error");
+      setSelectedRegion(r);
+      setShowRegionModal(true);
   };
 
   const startBattle = (r: Region, l: Level) => {
