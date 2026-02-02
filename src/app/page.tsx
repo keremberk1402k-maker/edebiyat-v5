@@ -21,6 +21,7 @@ const db = getDatabase(app);
 // --- AYARLAR ---
 const SAVE_KEY_PREFIX = "edb_save_v37_fix_"; 
 const BASE_WIDTH = 1200;
+const BASE_HEIGHT = 900;
 
 // --- TASARIM ---
 const containerStyle = {
