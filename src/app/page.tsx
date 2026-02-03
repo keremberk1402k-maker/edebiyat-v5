@@ -555,7 +555,7 @@ export default function Game() {
             np.maxXp = Math.floor(np.maxXp * 1.2);
             notify("SEVİYE ATLADIN!");
           }
-          if (nb.level.isBoss && nb.region) {
+          if (nb.level?.isBoss && nb.region) {
             if (nb.region.unlockC && !np.unlockedCostumes.includes(nb.region.unlockC)) np.unlockedCostumes.push(nb.region.unlockC);
             const rIdx = REGIONS.findIndex((r) => r.id === nb.region.id);
             if (rIdx < REGIONS.length - 1) {
