@@ -343,7 +343,7 @@ export default function Game() {
   }, []);
 
   // Yardımcı: shuffle
-  const shuffle = (arr: any[]) => arr.slice().sort(() => Math.random() - 0.5);
+  const shuffle = <T,>(arr: T[]): T[] => arr.slice().sort(() => Math.random() - 0.5);
 
   // --- CONFETTI (dynamic import canvas-confetti fallback to small canvas) ---
   const launchConfetti = async () => {
@@ -432,7 +432,7 @@ export default function Game() {
   const handleAuth = () => {
     if (!auth.user || !auth.pass) return notify("Boş bırakma!");
     const key = SAVE_KEY + auth.user;
-    if (auth.user === "admin" && auth.pass === "1234") {
+    if (auth.user === "ADMIN" && auth.pass === "1234") {
       setPlayer({
         name: "ADMIN",
         pass: "1234",
@@ -600,7 +600,19 @@ export default function Game() {
           np.hp = pStats.maxHp;
           save(np);
           notify("YENİLDİN...");
-          setBattle({ active: false });
+          setBattle({
+  active: false,
+  enemyHp: 0,
+  maxEnemyHp: 0,
+  qs: [],
+  qIdx: 0,
+  timer: 20,
+  combo: 0,
+  log: null,
+  wait: false,
+  dmgText: null,
+  shaking: false,
+});
           setScreen("menu");
           return;
         }
@@ -754,12 +766,12 @@ export default function Game() {
     const updates: any = {};
     if (correct) {
       // reduce opponent HP
-      if (side === "host") updates["state/guestHp"] = Math.max(0, (data.state.guestHp || getStats(player).maxHp) - damage);
-      else updates["state/hostHp"] = Math.max(0, (data.state.hostHp || getStats(player).maxHp) - damage);
+      if (side === "host") updates["state/guestHp"] = Math.max(0, (data.state.guestHp ?? getStats(player).maxHp) - damage);
+      else updates["state/hostHp"] = Math.max(0, (data.state.hostHp ?? getStats(player).maxHp) - damage);
     } else {
       // penalty: reduce my HP a bit
-      if (side === "host") updates["state/hostHp"] = Math.max(0, (data.state.hostHp || getStats(player).maxHp) - 20);
-      else updates["state/guestHp"] = Math.max(0, (data.state.guestHp || getStats(player).maxHp) - 20);
+      if (side === "host") updates["state/hostHp"] = Math.max(0, (data.state.hostHp ?? getStats(player).maxHp) - 20);
+      else updates["state/guestHp"] = Math.max(0, (data.state.guestHp ?? getStats(player).maxHp) - 20);
     }
     // advance question idx and toggle turn
     const nextIdx = (qIdx + 1) % qs.length;
