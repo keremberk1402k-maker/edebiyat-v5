@@ -814,7 +814,7 @@ export default function Game() {
       setBattle({
         active: true,
         region: { id: "pvp", name: "PvP", x: 0, y: 0, type: "all", bg: "", unlockC: "king", levels: [] },
-        level: { id: "pvp-l", t: "PvP", hp: 0, en: isHost ? m.players.guest : m.players.host, ico: "🤼", diff: "PvP", isBoss: false },
+        level: { id: "pvp-l", t: "PvP", hp: 0, en: isHost ? (m.players.guest ?? "") : m.players.host, ico: "🤼", diff: "PvP", isBoss: false },
         enemyHp: enemyHp,
         maxEnemyHp: getStats(player).maxHp,
         qs: m.state.qs,
