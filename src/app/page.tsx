@@ -667,7 +667,7 @@ export default function Game() {
       state: {
         hostHp: getStats(player).maxHp,
         guestHp: 0,
-        turn: "host",
+        turn: "host" as const,
         qIdx: 0,
         qs,
         started: false,
