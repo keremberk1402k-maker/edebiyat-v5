@@ -1,9 +1,4 @@
 "use client";
-// canvas-confetti için TS fallback (build hatasını kesin çözer)
-declare module "canvas-confetti" {
-  const confetti: any;
-  export default confetti;
-}
 
 import React, { useEffect, useRef, useState } from "react";
 import { initializeApp, getApps, getApp } from "firebase/app";
