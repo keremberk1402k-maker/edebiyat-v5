@@ -556,16 +556,21 @@ export default function Game() {
             notify("SEVİYE ATLADIN!");
           }
           if (nb.level?.isBoss && nb.region) {
-            if (nb.region.unlockC && !np.unlockedCostumes.includes(nb.region.unlockC)) np.unlockedCostumes.push(nb.region.unlockC);
-            const rIdx = REGIONS.findIndex((r) => r.id === nb.region.id);
-            if (rIdx < REGIONS.length - 1) {
-              const nextR = REGIONS[rIdx + 1].id;
-              if (!np.unlockedRegions.includes(nextR)) np.unlockedRegions.push(nextR);
-            }
-            const cp = np.regionProgress[nb.region.id] || 0;
-            const lIdx = nb.region.levels.findIndex((ll: Level) => ll.id === nb.level.id);
-            if (lIdx === cp) np.regionProgress[nb.region.id] = cp + 1;
-          }
+  const region = nb.region; // 🔑 TS artık undefined olamaz dedi
+
+  if (region.unlockC && !np.unlockedCostumes.includes(region.unlockC)) {
+    np.unlockedCostumes.push(region.unlockC);
+  }
+
+  const rIdx = REGIONS.findIndex((r) => r.id === region.id);
+  if (rIdx < REGIONS.length - 1) {
+    const nextR = REGIONS[rIdx + 1].id;
+    if (!np.unlockedRegions.includes(nextR)) {
+      np.unlockedRegions.push(nextR);
+    }
+  }
+}
+
           save(np);
           resetBattle();
           setScreen("menu");
