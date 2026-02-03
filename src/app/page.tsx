@@ -1,4 +1,9 @@
 "use client";
+// canvas-confetti için TS fallback (build hatasını kesin çözer)
+declare module "canvas-confetti" {
+  const confetti: any;
+  export default confetti;
+}
 
 import React, { useEffect, useRef, useState } from "react";
 import { initializeApp, getApps, getApp } from "firebase/app";
@@ -347,56 +352,75 @@ export default function Game() {
 
   // --- CONFETTI (dynamic import canvas-confetti fallback to small canvas) ---
   const launchConfetti = async () => {
-    // try canvas-confetti first (optional dependency)
-    try {
-      // dynamic import so package not required if not installed
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const mod = await import("canvas-confetti");
-      mod.default({
-        particleCount: 120,
-        spread: 140,
-        origin: { y: 0.6 },
+  if (typeof window === "undefined") return;
+
+  try {
+    const mod: any = await import("canvas-confetti");
+    const confetti = mod.default || mod;
+
+    confetti({
+      particleCount: 120,
+      spread: 140,
+      origin: { y: 0.6 },
+    });
+    return;
+  } catch {
+    // --- Fallback: canvas animasyonu ---
+    const canvas = confettiRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const w = (canvas.width = window.innerWidth);
+    const h = (canvas.height = window.innerHeight);
+
+    const particles: {
+      x: number;
+      y: number;
+      vx: number;
+      vy: number;
+      c: string;
+      life: number;
+    }[] = [];
+
+    for (let i = 0; i < 80; i++) {
+      particles.push({
+        x: w / 2 + (Math.random() - 0.5) * 200,
+        y: h / 2 + (Math.random() - 0.5) * 50,
+        vx: (Math.random() - 0.5) * 8,
+        vy: -6 - Math.random() * 6,
+        c: ["#ff4b2b", "#ffb400", "#00eaff", "#0f6", "#8a2be2"][
+          Math.floor(Math.random() * 5)
+        ],
+        life: 80 + Math.random() * 40,
       });
-      return;
-    } catch (e) {
-      // fallback: small native canvas burst
-      const canvas = confettiRef.current;
-      if (!canvas) return;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-      const w = (canvas.width = window.innerWidth);
-      const h = (canvas.height = window.innerHeight);
-      const particles: { x: number; y: number; vx: number; vy: number; c: string; life: number }[] = [];
-      for (let i = 0; i < 80; i++) {
-        particles.push({
-          x: w / 2 + (Math.random() - 0.5) * 200,
-          y: h / 2 + (Math.random() - 0.5) * 50,
-          vx: (Math.random() - 0.5) * 8,
-          vy: -6 - Math.random() * 6,
-          c: ["#ff4b2b", "#ffb400", "#00eaff", "#0f6", "#8a2be2"][Math.floor(Math.random() * 4)],
-          life: 80 + Math.random() * 40,
-        });
-      }
-      let raf: number;
-      const tick = () => {
-        ctx.clearRect(0, 0, w, h);
-        for (const p of particles) {
-          p.vy += 0.25;
-          p.x += p.vx;
-          p.y += p.vy;
-          p.life -= 1;
-          ctx.fillStyle = p.c;
-          ctx.fillRect(p.x, p.y, 6, 10);
-        }
-        // remove dead
-        for (let i = particles.length - 1; i >= 0; i--) if (particles[i].life <= 0) particles.splice(i, 1);
-        if (particles.length > 0) raf = requestAnimationFrame(tick);
-        else ctx.clearRect(0, 0, w, h);
-      };
-      raf = requestAnimationFrame(tick);
-      setTimeout(() => cancelAnimationFrame(raf), 5000);
     }
-  };
+
+    let raf = 0;
+    const tick = () => {
+      ctx.clearRect(0, 0, w, h);
+      for (const p of particles) {
+        p.vy += 0.25;
+        p.x += p.vx;
+        p.y += p.vy;
+        p.life--;
+        ctx.fillStyle = p.c;
+        ctx.fillRect(p.x, p.y, 6, 10);
+      }
+
+      for (let i = particles.length - 1; i >= 0; i--) {
+        if (particles[i].life <= 0) particles.splice(i, 1);
+      }
+
+      if (particles.length) raf = requestAnimationFrame(tick);
+      else ctx.clearRect(0, 0, w, h);
+    };
+
+    raf = requestAnimationFrame(tick);
+    setTimeout(() => cancelAnimationFrame(raf), 5000);
+  }
+};
 
   // --- ARENA BOT MANTIĞI ---
   useEffect(() => {
@@ -707,6 +731,7 @@ export default function Game() {
       } catch {}
     }
     setPvp({ searching: false, matchId: null, matchData: null, isHost: false, side: null });
+    setBattle({ active: false, enemyHp: 0, maxEnemyHp: 0, qs: [], qIdx: 0, timer: 20, combo: 0, log: null, wait: false, dmgText: null, shaking: false });
     setScreen("menu");
     notify("PvP'den ayrıldın");
   };
@@ -723,6 +748,7 @@ export default function Game() {
     if (!isMyTurn) return notify("Sıra sende değil");
     const qs: Q[] = data.state.qs || [];
     const qIdx = data.state.qIdx || 0;
+    if (!qs.length || qIdx >= qs.length) return notify("Soru bulunamadı");
     const q = qs[qIdx];
     const correct = selectedIndex === q.a;
     const damage = getStats(player).atk;
@@ -768,6 +794,7 @@ export default function Game() {
     const m = pvp.matchData;
     // if started map to battle screen
     if (m.state && m.state.started && pvp.side) {
+      if (!m.state.qs) return;
       // map host/guest to p1/p2 for local UI
       const isHost = pvp.side === "host";
       const enemyHp = isHost ? m.state.guestHp : m.state.hostHp;
