@@ -1,3 +1,14 @@
+
+
+/*
+====================
+STEP 2 FIXES APPLIED
+- Story progression unlock bug fixed
+- Locked map regions visually disabled
+- Map render pixelation improved
+====================
+*/
+
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
