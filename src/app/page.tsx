@@ -876,11 +876,7 @@ export default function Game() {
           <span style={S.neon("#0f6")}>❤️ {player?.hp}</span>
           <span style={S.neon("#00eaff")}>💰 {player?.gold}</span>
         </div>
-        <div style={{ display: "flex", gap: 12 }}>
-          <button style={{ ...S.btn, padding: "8px 14px", fontSize: 13 }} onClick={() => { playSound("click"); setScreen("map"); }}>HARİTA</button>
-          <button style={{ ...S.btn, padding: "8px 14px", fontSize: 13 }} onClick={() => { playSound("click"); findAndJoinMatch(); }}>HIZLI PvP</button>
-          <button style={{ ...S.btn, padding: "8px 14px", fontSize: 13 }} onClick={() => { playSound("click"); createPvPMatch(); }}>MAÇ OLUŞTUR</button>
-          <button style={{ ...S.btn, ...S.btnDanger, padding: "10px 18px", fontSize: 14 }} onClick={() => setScreen("auth")}>ÇIKIŞ</button>
+        <div style={{ display: "flex", gap: 12 }}>          <button style={{ ...S.btn, ...S.btnDanger, padding: "10px 18px", fontSize: 14 }} onClick={() => setScreen("auth")}>ÇIKIŞ</button>
         </div>
       </div>
 
