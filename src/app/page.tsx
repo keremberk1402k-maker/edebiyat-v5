@@ -572,7 +572,6 @@ export default function Game() {
 }
 
           save(np);
-          resetBattle();
           setScreen("menu");
           return;
         }
