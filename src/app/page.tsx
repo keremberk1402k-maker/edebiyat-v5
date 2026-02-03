@@ -178,7 +178,7 @@ const REGIONS: Region[] = [
   },
   {
     id: "r3",
-    name: "Arena",
+    name: "Arena (disabled)",
     x: 80,
     y: 20,
     type: "all",
