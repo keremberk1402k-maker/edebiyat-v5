@@ -584,7 +584,7 @@ export default function Game() {
           np.hp = pStats.maxHp;
           save(np);
           notify("YENİLDİN...");
-          setBattle({ active: false });
+          setBattle({ active: false, enemyHp: 0, maxEnemyHp: 0, qs: [], qIdx: 0, timer: 20, combo: 0, log: null, wait: false, dmgText: null, shaking: false });
           setScreen("menu");
           return;
         }
@@ -975,7 +975,7 @@ export default function Game() {
                       {k === "heal" ? "❤️" : k === "skip" ? "⏩" : "½"} ({player!.jokers[k]})
                     </button>
                   ))}
-                  <button style={{ ...S.btn, ...S.btnDanger }} onClick={() => { setScreen("menu"); setBattle({ active: false }); }}>PES ET</button>
+                  <button style={{ ...S.btn, ...S.btnDanger }} onClick={() => { setScreen("menu"); setBattle({ active: false, enemyHp: 0, maxEnemyHp: 0, qs: [], qIdx: 0, timer: 20, combo: 0, log: null, wait: false, dmgText: null, shaking: false }); }}>PES ET</button>
                 </div>
               </>
             )}
