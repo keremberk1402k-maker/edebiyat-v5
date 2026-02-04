@@ -439,28 +439,26 @@ REGIONS.forEach((r) => {
     if (!auth.user || !auth.pass) return notify("Boş bırakma!");
     const key = SAVE_KEY + auth.user;
     if (auth.user === "ADMIN" && auth.pass === "1234") {
-  const adminP: any = {
-  name: "ADMIN",
-  pass: "1234",
-  admin: true,
-  hp: 9999,
-  maxHp: 9999,
-  gold: 99999,
-  xp: 0,
-  maxXp: 100,
-  lvl: 99,
-  inventory: [],
-  equipped: { wep: null, arm: null },
-  jokers: { heal: 99, "5050": 99, skip: 99 },
-  mistakes: [],
-  score: 0,
-  unlockedRegions: ["tut", "r1", "r2", "r3"],
-  regionProgress: { tut: 2, r1: 2, r2: 2, r3: 1 },
-  unlockedCostumes: Object.keys(COSTUMES),
-  currentCostume: "king",
-  tutorialSeen: true,
-};
-
+  const adminP: Player = {
+    name: "ADMIN",
+    pass: "1234",
+    hp: 9999,
+    maxHp: 9999,
+    gold: 99999,
+    xp: 0,
+    maxXp: 100,
+    lvl: 99,
+    inventory: [],
+    equipped: { wep: null, arm: null },
+    jokers: { heal: 99, "5050": 99, skip: 99 },
+    mistakes: [],
+    score: 0, // ❗ admin skor basmasın
+    unlockedRegions: ["tut", "r1", "r2", "r3"],
+    regionProgress: { tut: 2, r1: 2, r2: 2, r3: 1 },
+    unlockedCostumes: Object.keys(COSTUMES),
+    currentCostume: "king",
+    tutorialSeen: true,
+  };
 
   setPlayer(adminP);
   setScreen("menu");
@@ -681,29 +679,37 @@ if (rIdx !== -1 && rIdx < REGIONS.length - 1) {
   };
 
   // Jokerler (local)
-  const useJoker = (id: string) => {
-    if (!battle.active || player!.jokers[id] <= 0) return;
-    const np = { ...player! };
-    np.jokers[id]--;
-    if (id === "heal") {
-      np.hp = Math.min(np.hp + 50, getStats(np).maxHp);
-      notify("Can Yenilendi");
-      save(np);
-      return;
-    }
-    if (id === "skip") {
-      if (turn === "p1") {
-        handleMove(true);
-        notify("Soru Geçildi");
-      } else {
-        const nb = { ...battle };
-        nb.qIdx = (nb.qIdx + 1) % nb.qs.length;
-        setBattle(nb);
-        notify("Rakip soru geçti");
-      }
-    }
+  const buyItem = (it: Item) => {
+  if (!player) return;
+
+  const np = { ...player };
+
+  // zaten alınmış mı?
+  if (np.inventory.some((x) => x.id === it.id)) {
+    notify("Bu item zaten sende var!");
+    return;
+  }
+
+  // ADMIN bedava
+  if (np.name === "ADMIN") {
+    np.inventory.push(it);
     save(np);
-  };
+    notify("ADMIN: Ürün eklendi!");
+    return;
+  }
+
+  // altın yeterli mi?
+  if (np.gold < it.cost) {
+    notify("Yeterli altın yok!");
+    return;
+  }
+
+  np.gold -= it.cost;
+  np.inventory.push(it);
+
+  save(np);
+  notify("Satın alındı!");
+};
 
   // --- PvP: basit eşleştirme + senkronizasyon (Realtime DB) ---
   // Not: Bu PvP örneği basit bir demo amaçlıdır ve üretim için güvenlik/yarış koşulları/atomic ops gerektirir.
@@ -1044,11 +1050,21 @@ if (rIdx !== -1 && rIdx < REGIONS.length - 1) {
                   })}
                 </div>
                 <div style={{ display: "flex", justifyContent: "center", gap: "12px", marginTop: "18px", flexWrap: "wrap" }}>
-                  {Object.keys(player!.jokers).map((k) => (
-                    <button key={k} style={{ ...S.btn, background: "#444", fontSize: "13px", opacity: player!.jokers[k] === 0 ? 0.5 : 1 }} onClick={() => useJoker(k)} disabled={player!.jokers[k] === 0}>
-                      {k === "heal" ? "❤️" : k === "skip" ? "⏩" : "½"} ({player!.jokers[k]})
-                    </button>
-                  ))}
+                 {Object.keys(player!.jokers).map((k) => (
+                  <button
+                    key={k}
+                    style={{
+                      ...S.btn,
+                      background: "#444",
+                      fontSize: "13px",
+                      opacity: player!.jokers[k] === 0 ? 0.5 : 1,
+                    }}
+                    onClick={() => useJoker(k as "heal" | "5050" | "skip")}
+                    disabled={player!.jokers[k] === 0}
+                  >
+                    {k === "heal" ? "❤️" : k === "skip" ? "⏩" : "½"} ({player!.jokers[k]})
+                  </button>
+                ))}
                   <button style={{ ...S.btn, ...S.btnDanger }} onClick={() => { setScreen("menu"); setBattle({ active: false, enemyHp: 0, maxEnemyHp: 0, qs: [], qIdx: 0, timer: 20, combo: 0, log: null, wait: false, dmgText: null, shaking: false }); }}>PES ET</button>
                 </div>
               </>
@@ -1083,7 +1099,7 @@ if (rIdx !== -1 && rIdx < REGIONS.length - 1) {
           </button>
 
           {REGIONS.map((r) => {
-            const u = (player!.unlockedRegions ?? []).includes(r.id) || r.id === "tut";
+            const u = player!.unlockedRegions.includes(r.id);
 
             return (
               <div
@@ -1149,7 +1165,18 @@ if (rIdx !== -1 && rIdx < REGIONS.length - 1) {
                   <div style={{ fontWeight: "800", fontSize: "16px" }}>{it.name}</div>
                   <div style={{ color: "#fc0", margin: "8px 0" }}>{it.cost} G</div>
                   <div style={{ fontSize: "12px", color: "#aaa", marginBottom: "10px" }}>+{it.val} Güç</div>
-                  <button style={{ ...S.btn, ...S.btnSuccess, width: "100%" }} onClick={() => { notify("SATIN ALMA EKLENECEK"); }}>SATIN AL</button>
+                                  <button
+                  style={{
+                    ...S.btn,
+                    ...S.btnSuccess,
+                    width: "100%",
+                    opacity: player!.inventory.some((x) => x.id === it.id) ? 0.5 : 1,
+                  }}
+                  disabled={player!.inventory.some((x) => x.id === it.id)}
+                  onClick={() => buyItem(it)}
+                >
+                  {player!.inventory.some((x) => x.id === it.id) ? "ALINDI" : "SATIN AL"}
+                </button>
                 </div>
               ))
               : player!.inventory.map((it, i) => (
