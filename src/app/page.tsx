@@ -679,6 +679,45 @@ if (rIdx !== -1 && rIdx < REGIONS.length - 1) {
   };
 
   // Jokerler (local)
+    // Joker kullanma (local)
+  const useJoker = (id: "heal" | "5050" | "skip") => {
+    if (!battle.active) return;
+    if (!player) return;
+
+    const np = { ...player };
+
+    if (!np.jokers) np.jokers = { heal: 0, "5050": 0, skip: 0 };
+    if ((np.jokers[id] ?? 0) <= 0) return;
+
+    np.jokers[id]--;
+
+    // HEAL
+    if (id === "heal") {
+      const st = getStats(np);
+      np.hp = Math.min(np.hp + 80, st.maxHp);
+      notify("❤️ Can basıldı!");
+      save(np);
+      return;
+    }
+
+    // SKIP
+    if (id === "skip") {
+      notify("⏩ Soru geçildi!");
+      setBattle((b) => ({ ...b, qIdx: (b.qIdx + 1) % b.qs.length }));
+      save(np);
+      return;
+    }
+
+    // 50/50 (şimdilik basit)
+    if (id === "5050") {
+      notify("½ Joker aktif! (şimdilik görsel)");
+      save(np);
+      return;
+    }
+
+    save(np);
+  };
+
   const buyItem = (it: Item) => {
   if (!player) return;
 
