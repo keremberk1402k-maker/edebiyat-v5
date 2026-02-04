@@ -917,9 +917,6 @@ if (rIdx !== -1 && rIdx < REGIONS.length - 1) {
           <span style={S.neon("#00eaff")}>💰 {player?.gold}</span>
         </div>
         <div style={{ display: "flex", gap: 12 }}>
-          <button style={{ ...S.btn, padding: "8px 14px", fontSize: 13 }} onClick={() => { playSound("click"); setScreen("map"); }}>HARİTA</button>
-          <button style={{ ...S.btn, padding: "8px 14px", fontSize: 13 }} onClick={() => { playSound("click"); findAndJoinMatch(); }}>HIZLI PvP</button>
-          <button style={{ ...S.btn, padding: "8px 14px", fontSize: 13 }} onClick={() => { playSound("click"); createPvPMatch(); }}>MAÇ OLUŞTUR</button>
           <button style={{ ...S.btn, ...S.btnDanger, padding: "10px 18px", fontSize: 14 }} onClick={() => setScreen("auth")}>ÇIKIŞ</button>
         </div>
       </div>
@@ -942,17 +939,28 @@ if (rIdx !== -1 && rIdx < REGIONS.length - 1) {
             {[{ id: "map", t: "MACERA", i: "🗺️", c: "#fc0" }, { id: "arena", t: "ARENA", i: "⚔️", c: "#f05" }, { id: "shop", t: "MARKET", i: "🛒", c: "#0f6" }, { id: "inv", t: "ÇANTA", i: "🎒", c: "#00eaff" }].map((m) => (
               <div key={m.id} onClick={() => {
                 playSound("click");
-                if (m.id === "arena") {
-                  setSearching(true);
-                  setTimeout(() => {
-                    setSearching(false);
-                    startBattle(
-                      { id: "arena", name: "ARENA", x: 0, y: 0, type: "all", bg: "https://images.unsplash.com/photo-1514539079130-25950c84af65?w=1000", unlockC: "king", levels: [] },
-                      { id: "pvp", t: "PvP", hp: getStats(player!).maxHp, en: "Rakip", ico: "🤖", diff: "PvP" },
-                      true
-                    );
-                  }, 1400);
-                } else setScreen(m.id as any);
+               if (m.id === "arena") {
+
+  // 🔥 Arena kilidi: r2 bitmeden açılmaz
+  const r2Levels = REGIONS.find((r) => r.id === "r2")!.levels.length;
+  const r2Progress = player!.regionProgress["r2"] ?? 0;
+
+  if (player!.name !== "ADMIN" && r2Progress < r2Levels) {
+    notify("Arena için Hikaye Ormanı bitmeli!");
+    return;
+  }
+
+  setSearching(true);
+  setTimeout(() => {
+    setSearching(false);
+    startBattle(
+      { id: "arena", name: "ARENA", x: 0, y: 0, type: "all", bg: "https://images.unsplash.com/photo-1514539079130-25950c84af65?w=1000", unlockC: "king", levels: [] },
+      { id: "pvp", t: "PvP", hp: getStats(player!).maxHp, en: "Rakip", ico: "🤖", diff: "PvP" },
+      true
+    );
+  }, 1400);
+}
+ else setScreen(m.id as any);
               }} style={{ ...S.glass, height: "210px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: "pointer", border: `1px solid ${m.c}`, background: searching && m.id === "arena" ? "rgba(255,0,85,0.12)" : "rgba(20,20,30,0.84)" }}>
                 {searching && m.id === "arena" ? <div style={{ color: "#f05", fontSize: "22px", animation: "pulse 0.5s infinite" }}>ARANIYOR...</div> : <><div style={{ fontSize: "64px", marginBottom: "14px" }}>{m.i}</div><div style={{ ...S.neon(m.c), fontSize: "20px", fontWeight: "800" }}>{m.t}</div></>}
               </div>
