@@ -589,17 +589,25 @@ if (nb.level?.isBoss && nb.region) {
     np.regionProgress[region.id] = region.levels.length;
   }
 
-  // Bir sonraki bölgeyi unlock et
-  const rIdx = REGIONS.findIndex((r) => r.id === region.id);
+ const rIdx = REGIONS.findIndex((r) => r.id === region.id);
 
-  if (rIdx !== -1 && rIdx < REGIONS.length - 1) {
-    const nextR = REGIONS[rIdx + 1].id;
-
+if (rIdx !== -1 && rIdx < REGIONS.length - 1) {
+  const nextR = REGIONS[rIdx + 1].id;
+ 
+  // 🔥 Arena sadece Hikaye bitince açılsın
+  if (nextR === "r3") {
+    if (np.regionProgress["r2"] >= REGIONS.find(r => r.id === "r2")!.levels.length) {
+      if (!np.unlockedRegions.includes(nextR)) {
+        np.unlockedRegions.push(nextR);
+      }
+    }
+  } else {
     if (!np.unlockedRegions.includes(nextR)) {
       np.unlockedRegions.push(nextR);
     }
   }
 }
+} // ✅ boss if kapanışı
 
           save(np);
           setScreen("menu");
@@ -898,7 +906,9 @@ if (nb.level?.isBoss && nb.region) {
       {/* confetti canvas (fallback) */}
       <canvas ref={confettiRef} style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 9999 }} />
 
+     
       {/* TOP BAR */}
+      {screen !== "battle" && (
       <div style={{ ...S.glass, margin: "15px", padding: "15px 25px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div style={{ display: "flex", gap: "18px", fontSize: "18px", fontWeight: "700", alignItems: "center" }}>
           <span style={{ fontSize: "24px" }}>{COSTUMES[player!.currentCostume].i}</span>
@@ -913,7 +923,7 @@ if (nb.level?.isBoss && nb.region) {
           <button style={{ ...S.btn, ...S.btnDanger, padding: "10px 18px", fontSize: 14 }} onClick={() => setScreen("auth")}>ÇIKIŞ</button>
         </div>
       </div>
-
+    )}
       {notif && <div style={{ position: "absolute", top: 80, left: "50%", transform: "translateX(-50%)", background: "#0f6", padding: "12px 22px", borderRadius: "12px", color: "#000", zIndex: 999, fontWeight: "700", boxShadow: "0 0 20px #0f6" }}>{notif}</div>}
 
       {/* MENU */}
