@@ -676,6 +676,7 @@ if (rIdx !== -1 && rIdx < REGIONS.length - 1) {
     setLastAnswer({ idx: answeredIdx, correct });
     setTimeout(() => setLastAnswer({ idx: null, correct: null }), 900);
     setTurn((prev) => (prev === "p1" ? "p2" : "p1"));
+    setBattle(nb);
   };
 
   // Jokerler (local)
@@ -718,28 +719,48 @@ if (rIdx !== -1 && rIdx < REGIONS.length - 1) {
     save(np);
   };
 
-  const buyItem = (it: Item) => {
+const buyItem = (it: Item) => {
   if (!player) return;
 
   const np = { ...player };
-
-  // zaten alınmış mı?
-  if (np.inventory.some((x) => x.id === it.id)) {
-    notify("Bu item zaten sende var!");
-    return;
-  }
+  if (!np.jokers) np.jokers = { heal: 0, "5050": 0, skip: 0 };
 
   // ADMIN bedava
   if (np.name === "ADMIN") {
-    np.inventory.push(it);
+    if (it.type === "joker") {
+      const jid = it.jokerId;
+      if (jid) np.jokers[jid] = (np.jokers[jid] || 0) + 1;
+      save(np);
+      notify("ADMIN: Joker eklendi!");
+      return;
+    }
+
+    if (!np.inventory.some((x) => x.id === it.id)) {
+      np.inventory.push(it);
+    }
     save(np);
     notify("ADMIN: Ürün eklendi!");
     return;
   }
 
-  // altın yeterli mi?
   if (np.gold < it.cost) {
     notify("Yeterli altın yok!");
+    return;
+  }
+
+  // Joker sınırsız alınır
+  if (it.type === "joker") {
+    np.gold -= it.cost;
+    const jid = it.jokerId;
+    if (jid) np.jokers[jid] = (np.jokers[jid] || 0) + 1;
+    save(np);
+    notify("Joker satın alındı!");
+    return;
+  }
+
+  // diğer itemler sadece 1 kere alınır
+  if (np.inventory.some((x) => x.id === it.id)) {
+    notify("Bu item zaten sende var!");
     return;
   }
 
@@ -749,6 +770,31 @@ if (rIdx !== -1 && rIdx < REGIONS.length - 1) {
   save(np);
   notify("Satın alındı!");
 };
+
+const equipItem = (it: Item) => {
+  if (!player) return;
+
+  const np = { ...player };
+
+  if (!np.equipped) np.equipped = { wep: null, arm: null };
+
+  if (it.type === "wep") {
+    np.equipped.wep = it;
+    save(np);
+    notify("⚔️ Silah kuşanıldı!");
+    return;
+  }
+
+  if (it.type === "arm") {
+    np.equipped.arm = it;
+    save(np);
+    notify("🛡️ Zırh kuşanıldı!");
+    return;
+  }
+
+  notify("Bu item kuşanılamaz!");
+};
+
 
   // --- PvP: basit eşleştirme + senkronizasyon (Realtime DB) ---
   // Not: Bu PvP örneği basit bir demo amaçlıdır ve üretim için güvenlik/yarış koşulları/atomic ops gerektirir.
@@ -1196,7 +1242,7 @@ if (rIdx !== -1 && rIdx < REGIONS.length - 1) {
             <h1 style={S.neon("#00eaff")}>{screen === "shop" ? "MARKET" : "ÇANTA"}</h1>
             <button style={{ ...S.btn, ...S.btnDanger }} onClick={() => setScreen("menu")}>GERİ</button>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: "18px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: "18px" }}>         
             {screen === "shop"
               ? Object.values(ITEMS).map((it) => (
                 <div key={it.id} style={{ ...S.glass, padding: "18px", textAlign: "center" }}>
@@ -1204,25 +1250,37 @@ if (rIdx !== -1 && rIdx < REGIONS.length - 1) {
                   <div style={{ fontWeight: "800", fontSize: "16px" }}>{it.name}</div>
                   <div style={{ color: "#fc0", margin: "8px 0" }}>{it.cost} G</div>
                   <div style={{ fontSize: "12px", color: "#aaa", marginBottom: "10px" }}>+{it.val} Güç</div>
-                                  <button
+                  <button
                   style={{
                     ...S.btn,
                     ...S.btnSuccess,
                     width: "100%",
-                    opacity: player!.inventory.some((x) => x.id === it.id) ? 0.5 : 1,
+                    opacity: it.type !== "joker" && player!.inventory.some((x) => x.id === it.id) ? 0.5 : 1,
                   }}
-                  disabled={player!.inventory.some((x) => x.id === it.id)}
+                  disabled={it.type !== "joker" && player!.inventory.some((x) => x.id === it.id)}
                   onClick={() => buyItem(it)}
                 >
-                  {player!.inventory.some((x) => x.id === it.id) ? "ALINDI" : "SATIN AL"}
+                  {it.type === "joker"
+                    ? "SATIN AL"
+                    : player!.inventory.some((x) => x.id === it.id)
+                    ? "ALINDI"
+                    : "SATIN AL"}
                 </button>
                 </div>
               ))
+              
               : player!.inventory.map((it, i) => (
                 <div key={i} style={{ ...S.glass, padding: "16px", textAlign: "center" }}>
                   <div style={{ fontSize: "40px" }}>{it.icon}</div>
                   <div style={{ fontWeight: 700 }}>{it.name}</div>
-                  {it.type !== "joker" && <button style={{ ...S.btn, marginTop: "10px", width: "100%" }} onClick={() => { notify("KUŞANMA EKLENECEK"); }}>KUŞAN</button>}
+                  {it.type !== "joker" && (
+                    <button
+                      style={{ ...S.btn, marginTop: "10px", width: "100%" }}
+                      onClick={() => equipItem(it)}
+                    >
+                      KUŞAN
+                    </button>
+                  )}
                   <button style={{ ...S.btn, marginTop: "8px", width: "100%", background: "#fc0", color: "black" }} onClick={() => { notify("SATMA EKLENECEK"); }}>SAT</button>
                 </div>
               ))}
