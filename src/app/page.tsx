@@ -439,26 +439,28 @@ REGIONS.forEach((r) => {
     if (!auth.user || !auth.pass) return notify("Boş bırakma!");
     const key = SAVE_KEY + auth.user;
     if (auth.user === "ADMIN" && auth.pass === "1234") {
-  const adminP: Player = {
-    name: "ADMIN",
-    pass: "1234",
-    hp: 9999,
-    maxHp: 9999,
-    gold: 99999,
-    xp: 0,
-    maxXp: 100,
-    lvl: 99,
-    inventory: [],
-    equipped: { wep: null, arm: null },
-    jokers: { heal: 99, "5050": 99, skip: 99 },
-    mistakes: [],
-    score: 0, // ❗ admin skor basmasın
-    unlockedRegions: ["tut", "r1", "r2", "r3"],
-    regionProgress: { tut: 2, r1: 2, r2: 2, r3: 1 },
-    unlockedCostumes: Object.keys(COSTUMES),
-    currentCostume: "king",
-    tutorialSeen: true,
-  };
+  const adminP: any = {
+  name: "ADMIN",
+  pass: "1234",
+  admin: true,
+  hp: 9999,
+  maxHp: 9999,
+  gold: 99999,
+  xp: 0,
+  maxXp: 100,
+  lvl: 99,
+  inventory: [],
+  equipped: { wep: null, arm: null },
+  jokers: { heal: 99, "5050": 99, skip: 99 },
+  mistakes: [],
+  score: 0,
+  unlockedRegions: ["tut", "r1", "r2", "r3"],
+  regionProgress: { tut: 2, r1: 2, r2: 2, r3: 1 },
+  unlockedCostumes: Object.keys(COSTUMES),
+  currentCostume: "king",
+  tutorialSeen: true,
+};
+
 
   setPlayer(adminP);
   setScreen("menu");
@@ -585,6 +587,9 @@ if (nb.region && nb.level) {
 // 🔥 boss bloğu bunun hemen altından başlıyor
 if (nb.level?.isBoss && nb.region) {
   const region = nb.region;
+  np.unlockedRegions = np.unlockedRegions || ["tut"];
+  np.unlockedCostumes = np.unlockedCostumes || ["default"];
+
 
   np.regionProgress = np.regionProgress || {};
 
@@ -1078,7 +1083,7 @@ if (rIdx !== -1 && rIdx < REGIONS.length - 1) {
           </button>
 
           {REGIONS.map((r) => {
-            const u = player!.unlockedRegions.includes(r.id);
+            const u = (player!.unlockedRegions ?? []).includes(r.id) || r.id === "tut";
 
             return (
               <div
@@ -1171,7 +1176,11 @@ if (rIdx !== -1 && rIdx < REGIONS.length - 1) {
                     <div style={{ fontWeight: "800", fontSize: "17px" }}>{l.t}</div>
                     <div style={{ fontSize: "12px", color: "#aaa" }}>{l.diff} - {l.hp} HP</div>
                   </div>
-                  {player!.regionProgress[modal.id] >= i ? <button style={S.btn} onClick={() => startBattle(modal, l)}>SAVAŞ</button> : <span>🔒</span>}
+                                {(player!.regionProgress?.[modal.id] ?? 0) >= i ? (
+                <button style={S.btn} onClick={() => startBattle(modal, l)}>SAVAŞ</button>
+              ) : (
+                <span>🔒</span>
+              )}
                 </div>
               ))}
             </div>
