@@ -320,6 +320,12 @@ export default function Game() {
     return { atk, maxHp: hp };
   };
   const save = (p: Player) => {
+    p.regionProgress = p.regionProgress || {};
+REGIONS.forEach((r) => {
+  if (p.regionProgress[r.id] === undefined) {
+    p.regionProgress[r.id] = 0;
+  }
+});
     if (p.name !== "ADMIN") {
       try {
         localStorage.setItem(SAVE_KEY + p.name, JSON.stringify(p));
@@ -433,29 +439,32 @@ export default function Game() {
     if (!auth.user || !auth.pass) return notify("Boş bırakma!");
     const key = SAVE_KEY + auth.user;
     if (auth.user === "ADMIN" && auth.pass === "1234") {
-      setPlayer({
-        name: "ADMIN",
-        pass: "1234",
-        hp: 9999,
-        maxHp: 9999,
-        gold: 99999,
-        xp: 0,
-        maxXp: 100,
-        lvl: 99,
-        inventory: [],
-        equipped: { wep: null, arm: null },
-        jokers: { heal: 99, "5050": 99, skip: 99 },
-        mistakes: [],
-        score: 9999,
-        unlockedRegions: ["tut", "r1", "r2", "r3"],
-        regionProgress: { tut: 2, r1: 2, r2: 2, r3: 1 },
-        unlockedCostumes: Object.keys(COSTUMES),
-        currentCostume: "king",
-        tutorialSeen: true,
-      });
-      setScreen("menu");
-      return;
-    }
+  const adminP: Player = {
+    name: "ADMIN",
+    pass: "1234",
+    hp: 9999,
+    maxHp: 9999,
+    gold: 99999,
+    xp: 0,
+    maxXp: 100,
+    lvl: 99,
+    inventory: [],
+    equipped: { wep: null, arm: null },
+    jokers: { heal: 99, "5050": 99, skip: 99 },
+    mistakes: [],
+    score: 0, // ❗ admin skor basmasın
+    unlockedRegions: ["tut", "r1", "r2", "r3"],
+    regionProgress: { tut: 2, r1: 2, r2: 2, r3: 1 },
+    unlockedCostumes: Object.keys(COSTUMES),
+    currentCostume: "king",
+    tutorialSeen: true,
+  };
+
+  setPlayer(adminP);
+  setScreen("menu");
+  return;
+}
+
     if (auth.reg) {
       if (localStorage.getItem(key)) return notify("Kullanıcı zaten var!");
       const newP: Player = {
