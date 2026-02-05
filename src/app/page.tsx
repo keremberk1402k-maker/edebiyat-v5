@@ -1170,84 +1170,102 @@ return (
           </div>
         </div>
       )}
-      {/* HARİTA */}
-      {screen === "map" && (
+  {/* HARİTA */}
+{screen === "map" && (
+  <div
+    style={{
+      flex: 1,
+      position: "relative",
+      backgroundColor: "#000",
+      backgroundImage: "url('/map.png')",
+      backgroundSize: "cover",
+      backgroundPosition: "center",
+      backgroundRepeat: "no-repeat",
+      overflow: "hidden",
+    }}
+  >
+    {/* KARARTMA */}
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        background: "rgba(0,0,0,0.45)",
+        zIndex: 0,
+      }}
+    />
+
+    {/* GERİ BUTONU */}
+    <button
+      style={{
+        ...S.btn,
+        ...S.btnDanger,
+        position: "absolute",
+        top: 20,
+        right: 20,
+        zIndex: 10,
+      }}
+      onClick={() => setScreen("menu")}
+    >
+      GERİ
+    </button>
+
+    {/* BÖLGELER */}
+    {REGIONS.map((r) => {
+      const unlocked = player!.unlockedRegions.includes(r.id);
+
+      return (
         <div
+          key={r.id}
+          onClick={() => {
+            if (unlocked) {
+              setModal(r);
+              playSound("click");
+            } else {
+              notify("Önceki Bölümü Bitir!");
+            }
+          }}
           style={{
-            flex: 1,
-            position: "relative",
-            background:
-              "url('/map.png') center/cover",
-            imageRendering: "auto",
-            transform: "translateZ(0)",
+            position: "absolute",
+            left: `${r.x}%`,
+            top: `${r.y}%`,
+            transform: "translate(-50%,-50%)",
+            cursor: unlocked ? "pointer" : "not-allowed",
+            textAlign: "center",
+            opacity: unlocked ? 1 : 0.35,
+            filter: unlocked
+              ? "drop-shadow(0 0 20px #00eaff)"
+              : "grayscale(100%)",
+            zIndex: 5,
           }}
         >
-          <button
+          <div
             style={{
-              ...S.btn,
-              ...S.btnDanger,
-              position: "absolute",
-              top: 20,
-              right: 20,
-              zIndex: 10,
+              fontSize: "70px",
+              animation: unlocked ? "pulse 2s infinite" : "",
             }}
-            onClick={() => setScreen("menu")}
           >
-            GERİ
-          </button>
+            {unlocked
+              ? r.type === "iletisim"
+                ? "📡"
+                : r.type === "hikaye"
+                ? "🌲"
+                : r.type === "siir"
+                ? "🎭"
+                : r.id === "tut"
+                ? "🎓"
+                : "🐲"
+              : "🔒"}
+          </div>
 
-          {REGIONS.map((r) => {
-            const u = player!.unlockedRegions.includes(r.id);
-
-            return (
-              <div
-                key={r.id}
-                onClick={() => {
-                  if (u) {
-                    setModal(r);
-                    playSound("click");
-                  } else notify("Önceki Bölümü Bitir!");
-                }}
-                style={{
-                  position: "absolute",
-                  left: `${r.x}%`,
-                  top: `${r.y}%`,
-                  transform: "translate(-50%,-50%)",
-                  cursor: u ? "pointer" : "not-allowed",
-                  textAlign: "center",
-                  opacity: u ? 1 : 0.35,
-                  filter: u
-                    ? "drop-shadow(0 0 20px #00eaff)"
-                    : "grayscale(100%)",
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: "70px",
-                    animation: u ? "pulse 2s infinite" : "",
-                  }}
-                >
-                  {u
-                    ? r.type === "iletisim"
-                      ? "📡"
-                      : r.type === "hikaye"
-                      ? "🌲"
-                      : r.type === "siir"
-                      ? "🎭"
-                      : r.id === "tut"
-                      ? "🎓"
-                      : "🐲"
-                    : "🔒"}
-                </div>
-
-                <div style={{ ...S.glass, padding: "6px 16px", fontSize: "14px" }}>
-                  {r.name}
-                </div>
-              </div>
-            );
-          })}
+          <div style={{ ...S.glass, padding: "6px 16px", fontSize: "14px" }}>
+            {r.name}
+          </div>
         </div>
-      )}
+      );
+    })}
+  </div>
+)}
+
      {/* MARKET / INV */}
 {(screen === "shop" || screen === "inv") && (
   <div style={{ flex: 1, padding: "22px", overflowY: "auto" }}>
