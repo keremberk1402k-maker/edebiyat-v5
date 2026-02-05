@@ -1240,6 +1240,63 @@ const equipItem = (it: Item) => {
         <div style={{ flex: 1, padding: "30px", overflowY: "auto" }}>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "26px", alignItems: "center" }}>
             <h1 style={S.neon("#00eaff")}>{screen === "shop" ? "MARKET" : "ÇANTA"}</h1>
+            {screen === "inv" && (
+  <div style={{ ...S.glass, padding: "18px", marginBottom: "20px" }}>
+    <h2 style={S.neon("#fc0")}>🎽 KUŞANILANLAR</h2>
+
+    <div style={{ display: "flex", gap: "14px", marginTop: "14px", flexWrap: "wrap" }}>
+      
+      {/* SİLAH SLOT */}
+      <div style={{ ...S.glass, padding: "14px", width: "200px", textAlign: "center" }}>
+        <div style={{ fontWeight: "800", marginBottom: "8px" }}>⚔️ Silah</div>
+        {player?.equipped?.wep ? (
+          <>
+            <div style={{ fontSize: "40px" }}>{player.equipped.wep.icon}</div>
+            <div>{player.equipped.wep.name}</div>
+            <button
+              style={{ ...S.btn, marginTop: "10px", width: "100%", background: "#f05" }}
+              onClick={() => {
+                const np = { ...player };
+                np.equipped.wep = null;
+                save(np);
+                notify("Silah çıkarıldı!");
+              }}
+            >
+              ÇIKAR
+            </button>
+          </>
+        ) : (
+          <div style={{ color: "#aaa" }}>Boş</div>
+        )}
+      </div>
+
+      {/* ZIRH SLOT */}
+      <div style={{ ...S.glass, padding: "14px", width: "200px", textAlign: "center" }}>
+        <div style={{ fontWeight: "800", marginBottom: "8px" }}>🛡️ Zırh</div>
+        {player?.equipped?.arm ? (
+          <>
+            <div style={{ fontSize: "40px" }}>{player.equipped.arm.icon}</div>
+            <div>{player.equipped.arm.name}</div>
+            <button
+              style={{ ...S.btn, marginTop: "10px", width: "100%", background: "#f05" }}
+              onClick={() => {
+                const np = { ...player };
+                np.equipped.arm = null;
+                save(np);
+                notify("Zırh çıkarıldı!");
+              }}
+            >
+              ÇIKAR
+            </button>
+          </>
+        ) : (
+          <div style={{ color: "#aaa" }}>Boş</div>
+        )}
+      </div>
+
+    </div>
+  </div>
+)}
             <button style={{ ...S.btn, ...S.btnDanger }} onClick={() => setScreen("menu")}>GERİ</button>
           </div>      
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: "18px" }}>
