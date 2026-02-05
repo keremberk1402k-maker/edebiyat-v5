@@ -1177,7 +1177,7 @@ return (
       flex: 1,
       position: "relative",
       backgroundColor: "#000",
-      backgroundImage: "url('/map.png')",
+      backgroundImage: "url('https://gemini.google.com/share/26ed5b6c7c0c')",
       backgroundSize: "cover",
       backgroundPosition: "center",
       backgroundRepeat: "no-repeat",
@@ -1265,7 +1265,6 @@ return (
     })}
   </div>
 )}
-
      {/* MARKET / INV */}
 {(screen === "shop" || screen === "inv") && (
   <div style={{ flex: 1, padding: "22px", overflowY: "auto" }}>
