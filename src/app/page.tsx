@@ -1010,7 +1010,7 @@ const equipItem = (it: Item) => {
 
       {/* confetti canvas (fallback) */}
       <canvas ref={confettiRef} style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 9999 }} />
-
+     
      
       {/* TOP BAR */}
       {screen !== "battle" && (
@@ -1241,53 +1241,82 @@ const equipItem = (it: Item) => {
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "26px", alignItems: "center" }}>
             <h1 style={S.neon("#00eaff")}>{screen === "shop" ? "MARKET" : "ÇANTA"}</h1>
             <button style={{ ...S.btn, ...S.btnDanger }} onClick={() => setScreen("menu")}>GERİ</button>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: "18px" }}>         
-            {screen === "shop"
-              ? Object.values(ITEMS).map((it) => (
-                <div key={it.id} style={{ ...S.glass, padding: "18px", textAlign: "center" }}>
-                  <div style={{ fontSize: "46px", marginBottom: "8px" }}>{it.icon}</div>
-                  <div style={{ fontWeight: "800", fontSize: "16px" }}>{it.name}</div>
-                  <div style={{ color: "#fc0", margin: "8px 0" }}>{it.cost} G</div>
-                  <div style={{ fontSize: "12px", color: "#aaa", marginBottom: "10px" }}>+{it.val} Güç</div>
-                  <button
-                  style={{
-                    ...S.btn,
-                    ...S.btnSuccess,
-                    width: "100%",
-                    opacity: it.type !== "joker" && player!.inventory.some((x) => x.id === it.id) ? 0.5 : 1,
-                  }}
-                  disabled={it.type !== "joker" && player!.inventory.some((x) => x.id === it.id)}
-                  onClick={() => buyItem(it)}
-                >
-                  {it.type === "joker"
-                    ? "SATIN AL"
-                    : player!.inventory.some((x) => x.id === it.id)
-                    ? "ALINDI"
-                    : "SATIN AL"}
-                </button>
-                </div>
-              ))
-              
-              : player!.inventory.map((it, i) => (
-                <div key={i} style={{ ...S.glass, padding: "16px", textAlign: "center" }}>
-                  <div style={{ fontSize: "40px" }}>{it.icon}</div>
-                  <div style={{ fontWeight: 700 }}>{it.name}</div>
-                  {it.type !== "joker" && (
-                    <button
-                      style={{ ...S.btn, marginTop: "10px", width: "100%" }}
-                      onClick={() => equipItem(it)}
-                    >
-                      KUŞAN
-                    </button>
-                  )}
-                  <button style={{ ...S.btn, marginTop: "8px", width: "100%", background: "#fc0", color: "black" }} onClick={() => { notify("SATMA EKLENECEK"); }}>SAT</button>
-                </div>
-              ))}
-          </div>
-        </div>
-      )}
+          </div>      
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: "18px" }}>
+  {screen === "shop" ? (
+    <>
+      {Object.values(ITEMS)
+        .filter((it) => it.type !== "joker")
+        .map((it) => (
+          <div key={it.id} style={{ ...S.glass, padding: "18px", textAlign: "center" }}>
+            <div style={{ fontSize: "46px", marginBottom: "8px" }}>{it.icon}</div>
+            <div style={{ fontWeight: "800", fontSize: "16px" }}>{it.name}</div>
+            <div style={{ color: "#fc0", margin: "8px 0" }}>{it.cost} G</div>
 
+            <button
+              style={{
+                ...S.btn,
+                ...S.btnSuccess,
+                width: "100%",
+              }}
+              onClick={() => buyItem(it)}
+            >
+              SATIN AL
+            </button>
+          </div>
+        ))}
+
+      <div style={{ gridColumn: "1 / -1", marginTop: "30px" }}>
+        <h2 style={S.neon("#fc0")}>🎴 JOKERLER</h2>
+      </div>
+
+      {Object.values(ITEMS)
+        .filter((it) => it.type === "joker")
+        .map((it) => (
+          <div key={it.id} style={{ ...S.glass, padding: "18px", textAlign: "center" }}>
+            <div style={{ fontSize: "46px", marginBottom: "8px" }}>{it.icon}</div>
+            <div style={{ fontWeight: "800", fontSize: "16px" }}>{it.name}</div>
+            <div style={{ color: "#fc0", margin: "8px 0" }}>{it.cost} G</div>
+
+            <button
+              style={{
+                ...S.btn,
+                ...S.btnSuccess,
+                width: "100%",
+              }}
+              onClick={() => buyItem(it)}
+            >
+              SATIN AL
+            </button>
+          </div>
+        ))}
+    </>
+  ) : (
+    <>
+      {player!.inventory.map((it, i) => (
+        <div key={i} style={{ ...S.glass, padding: "16px", textAlign: "center" }}>
+          <div style={{ fontSize: "40px" }}>{it.icon}</div>
+          <div style={{ fontWeight: 700 }}>{it.name}</div>
+
+          {it.type !== "joker" && (
+            <button style={{ ...S.btn, marginTop: "10px", width: "100%" }} onClick={() => equipItem(it)}>
+              KUŞAN
+            </button>
+          )}
+
+          <button
+            style={{ ...S.btn, marginTop: "8px", width: "100%", background: "#fc0", color: "black" }}
+            onClick={() => notify("SATMA EKLENECEK")}
+          >
+            SAT
+          </button>
+        </div>
+      ))}
+    </>
+  )}
+</div>
+</div>
+)}    
       {/* MODALS */}
       {modal && modal !== "wardrobe" && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.9)", zIndex: 100, display: "flex", justifyContent: "center", alignItems: "center" }}>
@@ -1300,11 +1329,13 @@ const equipItem = (it: Item) => {
                     <div style={{ fontWeight: "800", fontSize: "17px" }}>{l.t}</div>
                     <div style={{ fontSize: "12px", color: "#aaa" }}>{l.diff} - {l.hp} HP</div>
                   </div>
-                                {(player!.regionProgress?.[modal.id] ?? 0) >= i ? (
-                <button style={S.btn} onClick={() => startBattle(modal, l)}>SAVAŞ</button>
-              ) : (
-                <span>🔒</span>
-              )}
+                                      {(player!.regionProgress?.[modal.id] ?? 0) >= i ? (
+                  <button style={S.btn} onClick={() => startBattle(modal, l)}>
+                    SAVAŞ
+                  </button>
+                ) : (
+                  <span>🔒</span>
+                )}
                 </div>
               ))}
             </div>
