@@ -776,9 +776,14 @@ const equipItem = (it: Item) => {
 
   const np = { ...player };
 
-  if (!np.equipped) np.equipped = { wep: null, arm: null };
+  // Çantadan çıkar
+  np.inventory = np.inventory.filter((x) => x.id !== it.id);
 
   if (it.type === "wep") {
+    // Önce takılı silah varsa geri çantaya koy
+    if (np.equipped.wep) {
+      np.inventory.push(np.equipped.wep);
+    }
     np.equipped.wep = it;
     save(np);
     notify("⚔️ Silah kuşanıldı!");
@@ -786,16 +791,16 @@ const equipItem = (it: Item) => {
   }
 
   if (it.type === "arm") {
+    // Önce takılı zırh varsa geri çantaya koy
+    if (np.equipped.arm) {
+      np.inventory.push(np.equipped.arm);
+    }
     np.equipped.arm = it;
     save(np);
     notify("🛡️ Zırh kuşanıldı!");
     return;
   }
-
-  notify("Bu item kuşanılamaz!");
 };
-
-
   // --- PvP: basit eşleştirme + senkronizasyon (Realtime DB) ---
   // Not: Bu PvP örneği basit bir demo amaçlıdır ve üretim için güvenlik/yarış koşulları/atomic ops gerektirir.
   const createPvPMatch = async () => {
@@ -987,7 +992,7 @@ const equipItem = (it: Item) => {
 
   // --- RENDERING ---
   if (!mounted) return <div style={{ height: "100vh", background: "#000" }}></div>;
-
+  if (!player) return null;
   // LOGIN
   if (screen === "auth")
     return (
@@ -1003,9 +1008,21 @@ const equipItem = (it: Item) => {
         </div>
       </div>
     );
-
-  return (
-    <div style={{ height: "100vh", background: "radial-gradient(circle at center, #1a1a2e, #000)", color: "white", fontFamily: "Segoe UI, sans-serif", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+          return (
+          <div
+          style={{
+            height: "100vh",
+            backgroundImage: "url('/map.png')",
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+            backgroundRepeat: "no-repeat",
+            color: "white",
+            fontFamily: "Segoe UI, sans-serif",
+            overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
       <style>{globalStyles}</style>
 
       {/* confetti canvas (fallback) */}
@@ -1235,145 +1252,159 @@ const equipItem = (it: Item) => {
           })}
         </div>
       )}
-      {/* MARKET / INV */}
-      {(screen === "shop" || screen === "inv") && (
-        <div style={{ flex: 1, padding: "30px", overflowY: "auto" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "26px", alignItems: "center" }}>
-            <h1 style={S.neon("#00eaff")}>{screen === "shop" ? "MARKET" : "ÇANTA"}</h1>
-            {screen === "inv" && (
-  <div style={{ ...S.glass, padding: "18px", marginBottom: "20px" }}>
-    <h2 style={S.neon("#fc0")}>🎽 KUŞANILANLAR</h2>
+     {/* MARKET / INV */}
+{(screen === "shop" || screen === "inv") && (
+  <div style={{ flex: 1, padding: "22px", overflowY: "auto" }}>
 
-    <div style={{ display: "flex", gap: "14px", marginTop: "14px", flexWrap: "wrap" }}>
-      
-      {/* SİLAH SLOT */}
-      <div style={{ ...S.glass, padding: "14px", width: "200px", textAlign: "center" }}>
-        <div style={{ fontWeight: "800", marginBottom: "8px" }}>⚔️ Silah</div>
-        {player?.equipped?.wep ? (
-          <>
-            <div style={{ fontSize: "40px" }}>{player.equipped.wep.icon}</div>
-            <div>{player.equipped.wep.name}</div>
-            <button
-              style={{ ...S.btn, marginTop: "10px", width: "100%", background: "#f05" }}
-              onClick={() => {
-                const np = { ...player };
-                np.equipped.wep = null;
-                save(np);
-                notify("Silah çıkarıldı!");
-              }}
-            >
-              ÇIKAR
-            </button>
-          </>
-        ) : (
-          <div style={{ color: "#aaa" }}>Boş</div>
-        )}
-      </div>
+    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "26px", alignItems: "center" }}>
+      <h1 style={S.neon("#00eaff")}>{screen === "shop" ? "MARKET" : "ÇANTA"}</h1>
 
-      {/* ZIRH SLOT */}
-      <div style={{ ...S.glass, padding: "14px", width: "200px", textAlign: "center" }}>
-        <div style={{ fontWeight: "800", marginBottom: "8px" }}>🛡️ Zırh</div>
-        {player?.equipped?.arm ? (
-          <>
-            <div style={{ fontSize: "40px" }}>{player.equipped.arm.icon}</div>
-            <div>{player.equipped.arm.name}</div>
-            <button
-              style={{ ...S.btn, marginTop: "10px", width: "100%", background: "#f05" }}
-              onClick={() => {
-                const np = { ...player };
-                np.equipped.arm = null;
-                save(np);
-                notify("Zırh çıkarıldı!");
-              }}
-            >
-              ÇIKAR
-            </button>
-          </>
-        ) : (
-          <div style={{ color: "#aaa" }}>Boş</div>
-        )}
-      </div>
-
+      <button style={{ ...S.btn, ...S.btnDanger }} onClick={() => setScreen("menu")}>
+        GERİ
+      </button>
     </div>
+
+    {/* KUŞANILANLAR SLOTU (SADECE ÇANTA EKRANINDA) */}
+    {screen === "inv" && (
+      <div style={{ ...S.glass, padding: "18px", marginBottom: "20px" }}>
+        <h2 style={S.neon("#fc0")}>🎽 KUŞANILANLAR</h2>
+
+        <div style={{ display: "flex", gap: "14px", marginTop: "14px", flexWrap: "wrap" }}>
+          
+          {/* SİLAH SLOT */}
+          <div style={{ ...S.glass, padding: "14px", width: "200px", textAlign: "center" }}>
+            <div style={{ fontWeight: "800", marginBottom: "8px" }}>⚔️ Silah</div>
+
+            {player?.equipped?.wep ? (
+              <>
+                <div style={{ fontSize: "40px" }}>{player.equipped.wep.icon}</div>
+                <div>{player.equipped.wep.name}</div>
+
+                <button
+                  style={{ ...S.btn, marginTop: "10px", width: "100%", background: "#f05" }}
+                  onClick={() => {
+                    const np = { ...player };
+                    np.inventory.push(np.equipped.wep!);
+                    np.equipped.wep = null;
+                    save(np);
+                    notify("Silah çıkarıldı!");
+                  }}
+                >
+                  ÇIKAR
+                </button>
+              </>
+            ) : (
+              <div style={{ color: "#aaa" }}>Boş</div>
+            )}
+          </div>
+
+          {/* ZIRH SLOT */}
+          <div style={{ ...S.glass, padding: "14px", width: "200px", textAlign: "center" }}>
+            <div style={{ fontWeight: "800", marginBottom: "8px" }}>🛡️ Zırh</div>
+
+            {player?.equipped?.arm ? (
+              <>
+                <div style={{ fontSize: "40px" }}>{player.equipped.arm.icon}</div>
+                <div>{player.equipped.arm.name}</div>
+
+                <button
+                  style={{ ...S.btn, marginTop: "10px", width: "100%", background: "#f05" }}
+                  onClick={() => {
+                    const np = { ...player };
+                    np.inventory.push(np.equipped.arm!);
+                    np.equipped.arm = null;
+                    save(np);
+                    notify("Zırh çıkarıldı!");
+                  }}
+                >
+                  ÇIKAR
+                </button>
+              </>
+            ) : (
+              <div style={{ color: "#aaa" }}>Boş</div>
+            )}
+          </div>
+
+        </div>
+      </div>
+    )}
+
+    {/* MARKET / ÇANTA İÇERİK */}
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: "18px" }}>
+      {screen === "shop" ? (
+        <>
+          {/* EKİPMANLAR */}
+          {Object.values(ITEMS)
+            .filter((it) => it.type !== "joker")
+            .map((it) => (
+              <div key={it.id} style={{ ...S.glass, padding: "18px", textAlign: "center" }}>
+                <div style={{ fontSize: "46px", marginBottom: "8px" }}>{it.icon}</div>
+                <div style={{ fontWeight: "800", fontSize: "16px" }}>{it.name}</div>
+                <div style={{ color: "#fc0", margin: "8px 0" }}>{it.cost} G</div>
+
+                <button
+                  style={{ ...S.btn, ...S.btnSuccess, width: "100%" }}
+                  onClick={() => buyItem(it)}
+                >
+                  SATIN AL
+                </button>
+              </div>
+            ))}
+
+          {/* JOKER BAŞLIK */}
+          <div style={{ gridColumn: "1 / -1", marginTop: "30px" }}>
+            <h2 style={S.neon("#fc0")}>🎴 JOKERLER</h2>
+          </div>
+
+          {/* JOKERLER */}
+          {Object.values(ITEMS)
+            .filter((it) => it.type === "joker")
+            .map((it) => (
+              <div key={it.id} style={{ ...S.glass, padding: "18px", textAlign: "center" }}>
+                <div style={{ fontSize: "46px", marginBottom: "8px" }}>{it.icon}</div>
+                <div style={{ fontWeight: "800", fontSize: "16px" }}>{it.name}</div>
+                <div style={{ color: "#fc0", margin: "8px 0" }}>{it.cost} G</div>
+
+                <button
+                  style={{ ...S.btn, ...S.btnSuccess, width: "100%" }}
+                  onClick={() => buyItem(it)}
+                >
+                  SATIN AL
+                </button>
+              </div>
+            ))}
+        </>
+      ) : (
+        <>
+          {/* ÇANTA */}
+          {player!.inventory.map((it, i) => (
+            <div key={i} style={{ ...S.glass, padding: "16px", textAlign: "center" }}>
+              <div style={{ fontSize: "40px" }}>{it.icon}</div>
+              <div style={{ fontWeight: 700 }}>{it.name}</div>
+
+              {it.type !== "joker" && (
+                <button
+                  style={{ ...S.btn, marginTop: "10px", width: "100%" }}
+                  onClick={() => equipItem(it)}
+                >
+                  KUŞAN
+                </button>
+              )}
+
+              <button
+                style={{ ...S.btn, marginTop: "8px", width: "100%", background: "#fc0", color: "black" }}
+                onClick={() => notify("SATMA EKLENECEK")}
+              >
+                SAT
+              </button>
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+
   </div>
 )}
-            <button style={{ ...S.btn, ...S.btnDanger }} onClick={() => setScreen("menu")}>GERİ</button>
-          </div>      
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: "18px" }}>
-  {screen === "shop" ? (
-    <>
-      {Object.values(ITEMS)
-        .filter((it) => it.type !== "joker")
-        .map((it) => (
-          <div key={it.id} style={{ ...S.glass, padding: "18px", textAlign: "center" }}>
-            <div style={{ fontSize: "46px", marginBottom: "8px" }}>{it.icon}</div>
-            <div style={{ fontWeight: "800", fontSize: "16px" }}>{it.name}</div>
-            <div style={{ color: "#fc0", margin: "8px 0" }}>{it.cost} G</div>
-
-            <button
-              style={{
-                ...S.btn,
-                ...S.btnSuccess,
-                width: "100%",
-              }}
-              onClick={() => buyItem(it)}
-            >
-              SATIN AL
-            </button>
-          </div>
-        ))}
-
-      <div style={{ gridColumn: "1 / -1", marginTop: "30px" }}>
-        <h2 style={S.neon("#fc0")}>🎴 JOKERLER</h2>
-      </div>
-
-      {Object.values(ITEMS)
-        .filter((it) => it.type === "joker")
-        .map((it) => (
-          <div key={it.id} style={{ ...S.glass, padding: "18px", textAlign: "center" }}>
-            <div style={{ fontSize: "46px", marginBottom: "8px" }}>{it.icon}</div>
-            <div style={{ fontWeight: "800", fontSize: "16px" }}>{it.name}</div>
-            <div style={{ color: "#fc0", margin: "8px 0" }}>{it.cost} G</div>
-
-            <button
-              style={{
-                ...S.btn,
-                ...S.btnSuccess,
-                width: "100%",
-              }}
-              onClick={() => buyItem(it)}
-            >
-              SATIN AL
-            </button>
-          </div>
-        ))}
-    </>
-  ) : (
-    <>
-      {player!.inventory.map((it, i) => (
-        <div key={i} style={{ ...S.glass, padding: "16px", textAlign: "center" }}>
-          <div style={{ fontSize: "40px" }}>{it.icon}</div>
-          <div style={{ fontWeight: 700 }}>{it.name}</div>
-
-          {it.type !== "joker" && (
-            <button style={{ ...S.btn, marginTop: "10px", width: "100%" }} onClick={() => equipItem(it)}>
-              KUŞAN
-            </button>
-          )}
-
-          <button
-            style={{ ...S.btn, marginTop: "8px", width: "100%", background: "#fc0", color: "black" }}
-            onClick={() => notify("SATMA EKLENECEK")}
-          >
-            SAT
-          </button>
-        </div>
-      ))}
-    </>
-  )}
-</div>
-</div>
-)}    
       {/* MODALS */}
       {modal && modal !== "wardrobe" && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.9)", zIndex: 100, display: "flex", justifyContent: "center", alignItems: "center" }}>
