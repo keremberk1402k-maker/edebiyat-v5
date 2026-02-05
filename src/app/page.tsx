@@ -992,7 +992,6 @@ const equipItem = (it: Item) => {
 
   // --- RENDERING ---
   if (!mounted) return <div style={{ height: "100vh", background: "#000" }}></div>;
-  if (!player) return null;
   // LOGIN
   if (screen === "auth")
     return (
@@ -1008,19 +1007,19 @@ const equipItem = (it: Item) => {
         </div>
       </div>
     );
-          return (
-          <div
-          style={{
-            height: "100vh",
-            backgroundImage: "url('/map.png')",
-            backgroundSize: "cover",
-            backgroundPosition: "center",
-            backgroundRepeat: "no-repeat",
-            color: "white",
-            fontFamily: "Segoe UI, sans-serif",
-            overflow: "hidden",
-            display: "flex",
-            flexDirection: "column",
+return (
+  <div
+    style={{
+        height: "100vh",
+        backgroundImage: "url('/map.png')",
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundRepeat: "no-repeat",
+        color: "white",
+        fontFamily: "Segoe UI, sans-serif",
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
           }}
         >
       <style>{globalStyles}</style>
