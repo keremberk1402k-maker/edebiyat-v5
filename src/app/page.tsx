@@ -995,7 +995,7 @@ const equipItem = (it: Item) => {
   // LOGIN
   if (screen === "auth")
     return (
-      <div style={{ height: "100vh", background: "#000", display: "flex", justifyContent: "center", alignItems: "center", color: "white", fontFamily: "sans-serif" }}>
+      <div style={{ height: "100vh", background: "#000", display: "flex", justifyContent: "center", alignItems: "center", color: "black", fontFamily: "sans-serif" }}>
         <style>{globalStyles}</style>
         <div style={{ ...S.glass, padding: "40px", width: "420px", textAlign: "center" }}>
           <h1 style={{ ...S.neon("#00eaff"), fontSize: "44px", marginBottom: "20px" }}>EDEBİYAT<br />EFSANELERİ</h1>
@@ -1010,18 +1010,15 @@ const equipItem = (it: Item) => {
 return (
   <div
     style={{
-        height: "100vh",
-        backgroundImage: "url('/map.png')",
-        backgroundSize: "cover",
-        backgroundPosition: "center",
-        backgroundRepeat: "no-repeat",
-        color: "white",
-        fontFamily: "Segoe UI, sans-serif",
-        overflow: "hidden",
-        display: "flex",
-        flexDirection: "column",
-          }}
-        >
+      height: "100vh",
+      background: "radial-gradient(circle at center, #1a1a2e, #000)",
+      color: "white",
+      fontFamily: "Segoe UI, sans-serif",
+      overflow: "hidden",
+      display: "flex",
+      flexDirection: "column",
+    }}
+  >
       <style>{globalStyles}</style>
 
       {/* confetti canvas (fallback) */}
