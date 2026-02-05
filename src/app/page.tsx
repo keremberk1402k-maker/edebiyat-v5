@@ -775,7 +775,7 @@ const equipItem = (it: Item) => {
   if (!player) return;
 
   const np = { ...player };
-
+  
   // Çantadan çıkar
   np.inventory = np.inventory.filter((x) => x.id !== it.id);
 
@@ -801,6 +801,20 @@ const equipItem = (it: Item) => {
     return;
   }
 };
+const sellItem = (it: Item) => {
+  if (!player) return;
+
+  const np = { ...player };
+
+  np.inventory = np.inventory.filter((x) => x.id !== it.id);
+
+  const sellPrice = Math.floor(it.cost / 2);
+  np.gold += sellPrice;
+
+  save(np);
+  notify(`💰 ${it.name} satıldı! +${sellPrice} Altın`);
+};
+
   // --- PvP: basit eşleştirme + senkronizasyon (Realtime DB) ---
   // Not: Bu PvP örneği basit bir demo amaçlıdır ve üretim için güvenlik/yarış koşulları/atomic ops gerektirir.
   const createPvPMatch = async () => {
@@ -1406,7 +1420,8 @@ return (
 
               <button
                 style={{ ...S.btn, marginTop: "8px", width: "100%", background: "#fc0", color: "black" }}
-                onClick={() => notify("SATMA EKLENECEK")}
+                onClick={() => sellItem(it)}
+
               >
                 SAT
               </button>
