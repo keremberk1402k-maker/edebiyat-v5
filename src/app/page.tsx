@@ -995,7 +995,7 @@ const equipItem = (it: Item) => {
   // LOGIN
   if (screen === "auth")
     return (
-      <div style={{ height: "100vh", background: "#050505", display: "flex", justifyContent: "center", alignItems: "center", color: "white", fontFamily: "sans-serif" }}>
+      <div style={{ height: "100vh", background: "#000", display: "flex", justifyContent: "center", alignItems: "center", color: "white", fontFamily: "sans-serif" }}>
         <style>{globalStyles}</style>
         <div style={{ ...S.glass, padding: "40px", width: "420px", textAlign: "center" }}>
           <h1 style={{ ...S.neon("#00eaff"), fontSize: "44px", marginBottom: "20px" }}>EDEBİYAT<br />EFSANELERİ</h1>
@@ -1180,7 +1180,7 @@ return (
             flex: 1,
             position: "relative",
             background:
-              "url(https://images.unsplash.com/photo-1524661135-423995f22d0b?w=1000) center/cover",
+              "url('/map.png') center/cover",
             imageRendering: "auto",
             transform: "translateZ(0)",
           }}
