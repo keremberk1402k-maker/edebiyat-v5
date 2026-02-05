@@ -1177,7 +1177,7 @@ return (
       flex: 1,
       position: "relative",
       backgroundColor: "#000",
-      backgroundImage: "url('https://gemini.google.com/share/26ed5b6c7c0c')",
+      backgroundImage: "url('https://witchculttranslation.com/WM-K-Thumb.png')",
       backgroundSize: "cover",
       backgroundPosition: "center",
       backgroundRepeat: "no-repeat",
