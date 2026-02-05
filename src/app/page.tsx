@@ -310,29 +310,83 @@ export default function Game() {
       )
         .play()
         .catch(() => {});
-    } catch (e) {}
+    } catch {}
+  };
+  const normalizePlayer = (raw: Partial<Player>): Player => {
+    const normalized: Player = {
+      name: raw.name ?? "",
+      pass: raw.pass ?? "",
+      hp: typeof raw.hp === "number" ? raw.hp : 100,
+      maxHp: typeof raw.maxHp === "number" ? raw.maxHp : 100,
+      gold: typeof raw.gold === "number" ? raw.gold : 0,
+      xp: typeof raw.xp === "number" ? raw.xp : 0,
+      maxXp: typeof raw.maxXp === "number" ? raw.maxXp : 100,
+      lvl: typeof raw.lvl === "number" ? raw.lvl : 1,
+      inventory: Array.isArray(raw.inventory) ? raw.inventory : [],
+      equipped: {
+        wep: raw.equipped?.wep ?? null,
+        arm: raw.equipped?.arm ?? null,
+      },
+      jokers: {
+        heal: raw.jokers?.heal ?? 0,
+        "5050": raw.jokers?.["5050"] ?? 0,
+        skip: raw.jokers?.skip ?? 0,
+      },
+      mistakes: Array.isArray(raw.mistakes) ? raw.mistakes : [],
+      score: typeof raw.score === "number" ? raw.score : 0,
+      unlockedRegions: Array.isArray(raw.unlockedRegions)
+        ? raw.unlockedRegions
+        : ["tut"],
+      regionProgress: { ...(raw.regionProgress ?? {}) },
+      unlockedCostumes: Array.isArray(raw.unlockedCostumes)
+        ? raw.unlockedCostumes
+        : ["default"],
+      currentCostume:
+        raw.currentCostume && COSTUMES[raw.currentCostume]
+          ? raw.currentCostume
+          : "default",
+      tutorialSeen:
+        typeof raw.tutorialSeen === "boolean" ? raw.tutorialSeen : false,
+    };
+
+    REGIONS.forEach((r) => {
+      if (normalized.regionProgress[r.id] === undefined) {
+        normalized.regionProgress[r.id] = 0;
+      }
+    });
+
+    if (!normalized.unlockedRegions.includes("tut")) {
+      normalized.unlockedRegions = ["tut", ...normalized.unlockedRegions];
+    }
+    normalized.unlockedRegions = Array.from(
+      new Set(normalized.unlockedRegions)
+    );
+
+    if (!normalized.unlockedCostumes.includes(normalized.currentCostume)) {
+      normalized.unlockedCostumes = [
+        ...normalized.unlockedCostumes,
+        normalized.currentCostume,
+      ];
+    }
+
+    return normalized;
   };
   const getStats = (p: Player) => {
     let atk = 25 + p.lvl * 10,
       hp = 120 + p.lvl * 30;
-    if (p.equipped.wep) atk += p.equipped.wep.val;
-    if (p.equipped.arm) hp += p.equipped.arm.val;
+    if (p.equipped?.wep) atk += p.equipped.wep.val;
+    if (p.equipped?.arm) hp += p.equipped.arm.val;
     return { atk, maxHp: hp };
   };
   const save = (p: Player) => {
-    p.regionProgress = p.regionProgress || {};
-REGIONS.forEach((r) => {
-  if (p.regionProgress[r.id] === undefined) {
-    p.regionProgress[r.id] = 0;
-  }
-});
-    if (p.name !== "ADMIN") {
+    const np = normalizePlayer(p);
+    if (np.name !== "ADMIN") {
       try {
-        localStorage.setItem(SAVE_KEY + p.name, JSON.stringify(p));
-        update(ref(db, "users/" + p.name), { score: p.score }).catch(() => {});
-      } catch (e) {}
+        localStorage.setItem(SAVE_KEY + np.name, JSON.stringify(np));
+        update(ref(db, "users/" + np.name), { score: np.score }).catch(() => {});
+      } catch {}
     }
-    setPlayer({ ...p });
+    setPlayer({ ...np });
   };
 
   useEffect(() => {
@@ -356,8 +410,10 @@ REGIONS.forEach((r) => {
   if (typeof window === "undefined") return;
 
   try {
-    const mod: any = await import("canvas-confetti");
-    const confetti = mod.default || mod;
+    type ConfettiModule = typeof import("canvas-confetti");
+    const mod = await import("canvas-confetti");
+    const confetti =
+      ("default" in mod ? mod.default : mod) as ConfettiModule;
 
     confetti({
       particleCount: 120,
@@ -423,17 +479,6 @@ REGIONS.forEach((r) => {
   }
 };
 
-  // --- ARENA BOT MANTIĞI ---
-  useEffect(() => {
-    if (battle.active && botMatch && turn === "p2" && !battle.wait) {
-      const timer = setTimeout(() => {
-        const hit = Math.random() > 0.4;
-        handleMove(hit);
-      }, 1400 + Math.random() * 1400);
-      return () => clearTimeout(timer);
-    }
-  }, [battle, turn, botMatch]);
-
   // --- AUTH ---
   const handleAuth = () => {
     if (!auth.user || !auth.pass) return notify("Boş bırakma!");
@@ -493,9 +538,9 @@ REGIONS.forEach((r) => {
     } else {
       const d = localStorage.getItem(key);
       if (!d) return notify("Kullanıcı yok!");
-      const p = JSON.parse(d);
+      const p = normalizePlayer(JSON.parse(d));
       if (p.pass !== auth.pass) return notify("Şifre yanlış!");
-      setPlayer(p);
+      save(p);
       setScreen("menu");
     }
   };
@@ -506,7 +551,6 @@ REGIONS.forEach((r) => {
     setModal(null);
     setBotMatch(isBot);
     setTurn("p1");
-    const stats = getStats(player!);
 
     let pool = QUESTIONS.slice();
     if (r && r.type && r.type !== "all") {
@@ -535,7 +579,7 @@ REGIONS.forEach((r) => {
   // Local answer handler (single player / bot)
   const handleMove = (correct: boolean) => {
     if (!battle.active) return;
-    let nb = { ...battle };
+    const nb = { ...battle };
     const currentTurn = turn;
     const pStats = getStats(player!);
     const dmg = botMatch && currentTurn === "p2" ? 35 + player!.lvl * 2 : pStats.atk;
