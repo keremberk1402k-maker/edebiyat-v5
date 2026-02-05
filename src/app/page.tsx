@@ -723,9 +723,20 @@ if (rIdx !== -1 && rIdx < REGIONS.length - 1) {
     setBattle(nb);
   };
 
+  // --- ARENA BOT MANTIĞI ---
+  useEffect(() => {
+    if (battle.active && botMatch && turn === "p2" && !battle.wait) {
+      const timer = setTimeout(() => {
+        const hit = Math.random() > 0.4;
+        handleMove(hit);
+      }, 1400 + Math.random() * 1400);
+      return () => clearTimeout(timer);
+    }
+  }, [battle, botMatch, turn, handleMove]);
+
   // Jokerler (local)
-    // Joker kullanma (local)
-  const useJoker = (id: "heal" | "5050" | "skip") => {
+  // Joker kullanma (local)
+  const applyJoker = (id: "heal" | "5050" | "skip") => {
     if (!battle.active) return;
     if (!player) return;
 
@@ -1215,7 +1226,7 @@ return (
                       fontSize: "13px",
                       opacity: player!.jokers[k] === 0 ? 0.5 : 1,
                     }}
-                    onClick={() => useJoker(k as "heal" | "5050" | "skip")}
+                    onClick={() => applyJoker(k as "heal" | "5050" | "skip")}
                     disabled={player!.jokers[k] === 0}
                   >
                     {k === "heal" ? "❤️" : k === "skip" ? "⏩" : "½"} ({player!.jokers[k]})
