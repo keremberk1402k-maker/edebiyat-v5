@@ -297,6 +297,7 @@ export default function Game() {
     setNotif(m);
     setTimeout(() => setNotif(null), 3000);
   };
+  
   const playSound = (t: "click" | "win" | "hit") => {
     if (typeof window === "undefined") return;
     try {
@@ -311,6 +312,7 @@ export default function Game() {
         .catch(() => {});
     } catch (e) {}
   };
+  
   const getStats = (p: Player) => {
     let atk = 25 + p.lvl * 10,
       hp = 120 + p.lvl * 30;
@@ -326,23 +328,36 @@ export default function Game() {
         p.regionProgress[r.id] = 0;
       }
     });
+    
+    // Admin hesapları hariç local'e kaydet
     if (p.name !== "ADMIN" && p.name !== "ADMIN2" && p.name !== "ADMIN3") {
       try {
         localStorage.setItem(SAVE_KEY + p.name, JSON.stringify(p));
-        update(ref(db, "users/" + p.name), { score: p.score, lvl: p.lvl }).catch(() => {});
       } catch (e) {}
     }
+    
+    // HER ZAMAN Firebase'e kaydet (leaderboard için)
+    update(ref(db, "users/" + p.name), { 
+      score: p.score, 
+      lvl: p.lvl,
+      name: p.name 
+    }).catch((e) => console.error("Firebase kayıt hatası:", e));
+    
     setPlayer({ ...p });
-    loadLeaderboard();
+    loadLeaderboard(); // Leaderboard'u güncelle
   };
 
-  // Leaderboard yükle
+  // Leaderboard yükle - DÜZELTİLDİ
   const loadLeaderboard = async () => {
     try {
+      console.log("Leaderboard yükleniyor...");
       const usersRef = ref(db, "users");
       const snapshot = await get(usersRef);
+      
       if (snapshot.exists()) {
         const users = snapshot.val();
+        console.log("Firebase'den gelen kullanıcılar:", users);
+        
         const leaderboardData = Object.keys(users)
           .map(key => ({
             name: key,
@@ -351,7 +366,12 @@ export default function Game() {
           }))
           .sort((a, b) => b.score - a.score)
           .slice(0, 10);
+        
+        console.log("Sıralama:", leaderboardData);
         setLeaderboard(leaderboardData);
+      } else {
+        console.log("Firebase'de kullanıcı yok");
+        setLeaderboard([]);
       }
     } catch (e) {
       console.error("Leaderboard yüklenemedi:", e);
@@ -360,7 +380,8 @@ export default function Game() {
 
   useEffect(() => {
     setMounted(true);
-    loadLeaderboard();
+    loadLeaderboard(); // İlk yüklemede leaderboard'u al
+    
     return () => {
       if (pvp.matchId) {
         try {
@@ -373,17 +394,19 @@ export default function Game() {
     };
   }, []);
 
-  // 50 SANİYE TIMER KONTROLÜ
+  // 50 SANİYE TIMER KONTROLÜ - DÜZELTİLDİ
   useEffect(() => {
-    console.log("Timer useEffect çalıştı. searching:", pvp.searching);
+    console.log("Timer useEffect çalıştı. searching:", pvp.searching, "searchStartTime:", pvp.searchStartTime);
     
     if (pvp.searching && pvp.searchStartTime) {
-      console.log("Timer başlatılıyor. Başlangıç zamanı:", pvp.searchStartTime);
+      console.log("Timer başlatılıyor. Başlangıç zamanı:", new Date(pvp.searchStartTime).toLocaleTimeString());
       
+      // Önceki interval'i temizle
       if (searchInterval) {
         clearInterval(searchInterval);
       }
       
+      // Yeni interval oluştur
       const interval = setInterval(() => {
         const now = Date.now();
         const elapsedSeconds = Math.floor((now - pvp.searchStartTime!) / 1000);
@@ -392,24 +415,30 @@ export default function Game() {
         console.log("Geçen süre:", elapsedSeconds, "Kalan süre:", remaining);
         setSearchTimeLeft(remaining);
         
+        // 50 saniye doldu mu kontrol et
         if (elapsedSeconds >= 50) {
-          console.log("50 SANİYE DOLDU! Bot ile eşleştiriliyor...");
+          console.log("🔥 50 SANİYE DOLDU! Bot ile eşleştiriliyor...");
           clearInterval(interval);
           setSearchInterval(null);
           
+          // Arama durumunu kapat
           setPvp(prev => ({ ...prev, searching: false, searchStartTime: undefined }));
+          
+          // Bot maçını başlat
           startBotArenaMatch();
-          notify("Rakip bulunamadı, bot ile eşleştiniz!");
+          notify("🤖 Rakip bulunamadı, bot ile eşleştiniz!");
         }
       }, 1000);
       
       setSearchInterval(interval);
       
+      // Cleanup function
       return () => {
         console.log("Timer temizleniyor");
         if (interval) clearInterval(interval);
       };
     } else {
+      // Arama yoksa timer'ı temizle ve süreyi sıfırla
       if (searchInterval) {
         clearInterval(searchInterval);
         setSearchInterval(null);
@@ -422,12 +451,19 @@ export default function Game() {
     return searchTimeLeft;
   };
 
+  // BOT MAÇI BAŞLAT - DÜZELTİLDİ
   const startBotArenaMatch = () => {
-    console.log("BOT MAÇI BAŞLATILIYOR!");
+    console.log("🚀 BOT MAÇI BAŞLATILIYOR!");
     
-    const stats = getStats(player!);
-    const botAtk = Math.floor(stats.atk * 0.8);
+    if (!player) {
+      console.error("Player yok!");
+      return;
+    }
+    
+    const stats = getStats(player);
     const botHp = stats.maxHp;
+    
+    console.log("Bot HP:", botHp, "Oyuncu Gücü:", stats.atk);
     
     setBotMatch(true);
     setTurn("p1");
@@ -435,22 +471,40 @@ export default function Game() {
     const pool = QUESTIONS.slice();
     const qs = shuffle(pool).slice(0, 25);
     
-    setBattle({
+    const battleState = {
       active: true,
-      region: { id: "arena", name: "ARENA", x: 0, y: 0, type: "all", bg: "https://images.unsplash.com/photo-1514539079130-25950c84af65?w=1000", unlockC: "king", levels: [] },
-      level: { id: "pvp-bot", t: "Bot Arena", hp: botHp, en: "Bot", ico: "🤖", diff: "Arena" },
+      region: { 
+        id: "arena", 
+        name: "ARENA", 
+        x: 0, 
+        y: 0, 
+        type: "all", 
+        bg: "https://images.unsplash.com/photo-1514539079130-25950c84af65?w=1000", 
+        unlockC: "king", 
+        levels: [] 
+      },
+      level: { 
+        id: "pvp-bot", 
+        t: "Bot Arena", 
+        hp: botHp, 
+        en: "Bot", 
+        ico: "🤖", 
+        diff: "Arena" 
+      },
       enemyHp: botHp,
       maxEnemyHp: botHp,
       qs,
       qIdx: 0,
       timer: 20,
       combo: 0,
-      log: "Bot ile savaş başlıyor!",
+      log: "🤖 Bot ile savaş başlıyor!",
       wait: false,
       dmgText: null,
       shaking: false,
-    });
+    };
     
+    console.log("Battle state:", battleState);
+    setBattle(battleState);
     setScreen("battle");
   };
 
@@ -520,20 +574,25 @@ export default function Game() {
     }
   };
 
+  // BOT CEVAPLARI - DÜZELTİLDİ
   useEffect(() => {
     if (battle.active && botMatch && turn === "p2" && !battle.wait) {
+      console.log("Bot sırası, cevap veriyor...");
       const timer = setTimeout(() => {
-        const hit = Math.random() > 0.4;
+        const hit = Math.random() > 0.4; // %60 doğruluk
+        console.log("Bot cevabı:", hit ? "DOĞRU" : "YANLIŞ");
         handleMove(hit);
-      }, 1400 + Math.random() * 1400);
+      }, 2000); // 2 saniye düşünsün
+      
       return () => clearTimeout(timer);
     }
-  }, [battle, turn, botMatch]);
+  }, [battle.active, botMatch, turn, battle.wait]);
 
   const handleAuth = () => {
     if (!auth.user || !auth.pass) return notify("Boş bırakma!");
     const key = SAVE_KEY + auth.user;
     
+    // ADMIN hesapları
     if ((auth.user === "ADMIN" || auth.user === "ADMIN2" || auth.user === "ADMIN3") && auth.pass === "1234") {
       const adminP: Player = {
         name: auth.user,
@@ -548,7 +607,7 @@ export default function Game() {
         equipped: { wep: null, arm: null },
         jokers: { heal: 99, "5050": 99, skip: 99 },
         mistakes: [],
-        score: 1000,
+        score: 1000 + Math.floor(Math.random() * 500), // Her adminin farklı skoru olsun
         unlockedRegions: ["tut", "r1", "r2", "r3"],
         regionProgress: { tut: 2, r1: 2, r2: 2, r3: 1 },
         unlockedCostumes: Object.keys(COSTUMES),
@@ -557,11 +616,18 @@ export default function Game() {
         arenaRulesSeen: true,
       };
       
-      update(ref(db, "users/" + auth.user), { score: adminP.score, lvl: adminP.lvl }).catch(() => {});
+      // Admin skorunu Firebase'e kaydet
+      update(ref(db, "users/" + auth.user), { 
+        score: adminP.score, 
+        lvl: adminP.lvl,
+        name: auth.user 
+      }).catch(() => {});
       
       setPlayer(adminP);
       setScreen("menu");
-      loadLeaderboard();
+      
+      // Leaderboard'u hemen güncelle
+      setTimeout(() => loadLeaderboard(), 1000);
       return;
     }
 
@@ -589,7 +655,14 @@ export default function Game() {
         arenaRulesSeen: false,
       };
       localStorage.setItem(key, JSON.stringify(newP));
-      update(ref(db, "users/" + auth.user), { score: 0, lvl: 1 }).catch(() => {});
+      
+      // Yeni kullanıcıyı Firebase'e ekle
+      update(ref(db, "users/" + auth.user), { 
+        score: 0, 
+        lvl: 1,
+        name: auth.user 
+      }).catch(() => {});
+      
       setAuth({ ...auth, reg: false });
       notify("Kayıt Oldun!");
     } else {
@@ -597,6 +670,14 @@ export default function Game() {
       if (!d) return notify("Kullanıcı yok!");
       const p = JSON.parse(d);
       if (p.pass !== auth.pass) return notify("Şifre yanlış!");
+      
+      // Kullanıcıyı Firebase'e ekle (yoksa)
+      update(ref(db, "users/" + auth.user), { 
+        score: p.score || 0, 
+        lvl: p.lvl || 1,
+        name: auth.user 
+      }).catch(() => {});
+      
       setPlayer(p);
       setScreen("menu");
       loadLeaderboard();
@@ -864,7 +945,7 @@ export default function Game() {
     notify(`💰 ${it.name} satıldı! +${sellPrice} Altın`);
   };
 
-  // --- PVP FONKSİYONLARI ---
+  // --- PVP FONKSİYONLARI - DÜZELTİLDİ ---
   const createPvPMatch = async () => {
     if (!player) return notify("Giriş yapmalısın");
     
@@ -897,7 +978,7 @@ export default function Game() {
     await set(newRef, initialState);
     
     const startTime = Date.now();
-    console.log("Arama başlangıç zamanı:", startTime);
+    console.log("Arama başlangıç zamanı:", new Date(startTime).toLocaleTimeString());
     
     setPvp({ 
       searching: true, 
