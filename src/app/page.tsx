@@ -376,83 +376,100 @@ export default function Game() {
     };
   }, []);
 
-  // 50 SANİYE SAYACI VE EŞLEŞME KONTROLÜ
-  useEffect(() => {
-    let timer: NodeJS.Timeout | null = null;
-    let matchCheckInterval: NodeJS.Timeout | null = null;
+  // 50 SANİYE SAYACI VE EŞLEŞME KONTROLÜ - DÜZELTİLDİ
+useEffect(() => {
+  let timer: NodeJS.Timeout | null = null;
+  let matchCheckInterval: NodeJS.Timeout | null = null;
+  
+  if (isSearching) {
+    console.log("⏱️ Sayaç başladı! 50 saniye sayılıyor...");
+    setSearchTimeLeft(50);
     
-    if (isSearching) {
-      console.log("⏱️ Sayaç başladı! 50 saniye sayılıyor...");
-      setSearchTimeLeft(50);
-      
-      // Her saniye sayacı güncelle
-      timer = setInterval(() => {
-        setSearchTimeLeft(prev => {
-          const newValue = prev - 1;
-          console.log("Kalan süre:", newValue);
+    // Her saniye sayacı güncelle
+    timer = setInterval(() => {
+      setSearchTimeLeft(prev => {
+        const newValue = prev - 1;
+        console.log("Kalan süre:", newValue);
+        
+        if (newValue <= 0) {
+          console.log("🔥 50 SANİYE DOLDU! Bot ile eşleşiliyor...");
+          if (timer) clearInterval(timer);
+          if (matchCheckInterval) clearInterval(matchCheckInterval);
+          setIsSearching(false);
           
-          if (newValue <= 0) {
-            console.log("🔥 50 SANİYE DOLDU! Bot ile eşleşiliyor...");
+          // Kendi maçını sil
+          if (pvp.matchId) {
+            set(ref(db, `matches/${pvp.matchId}`), null).catch(() => {});
+          }
+          
+          // Bot ile başlat
+          startBotArenaMatch();
+          return 0;
+        }
+        return newValue;
+      });
+    }, 1000);
+    
+    // Her 3 saniyede bir açık maçları kontrol et - DÜZELTİLDİ
+    matchCheckInterval = setInterval(async () => {
+      if (!player) return;
+      
+      try {
+        console.log("🔍 Açık maçlar kontrol ediliyor...");
+        const snap = await get(ref(db, "matches"));
+        const matchesObj = snap.val() || {};
+        
+        // Açık maçları listele
+        console.log("Mevcut maçlar:", Object.keys(matchesObj).length);
+        
+        // Açık maç ara (guest'i olmayan ve host ben değilim)
+        for (const k of Object.keys(matchesObj)) {
+          const m = matchesObj[k];
+          
+          // Kendi maçını kontrol etme
+          if (k === pvp.matchId) continue;
+          
+          // Uygun maç bulundu mu?
+          if (m && m.players && !m.players.guest) {
+            console.log("🎮 Aday maç bulundu! ID:", k, "Host:", m.players.host);
+            
+            // Maça katıl
+            await update(ref(db, `matches/${k}/players`), { guest: player.name });
+            
+            // Timer'ları durdur
             if (timer) clearInterval(timer);
             if (matchCheckInterval) clearInterval(matchCheckInterval);
+            
             setIsSearching(false);
             
-            // Eğer hala eşleşmemişse bot ile başlat
-            if (!pvp.matchId) {
-              startBotArenaMatch();
+            // Kendi maçını sil
+            if (pvp.matchId) {
+              await set(ref(db, `matches/${pvp.matchId}`), null);
             }
-            return 0;
+            
+            // Maçı dinlemeye başla
+            onValue(ref(db, `matches/${k}`), (snap2) => {
+              const val = snap2.val();
+              console.log("Maç güncellendi:", val);
+              setPvp(prev => ({ ...prev, matchData: val }));
+            });
+            
+            setPvp({ matchId: k, matchData: null, side: "guest" });
+            notify("🎮 Rakip bulundu! Maç başlıyor...");
+            break;
           }
-          return newValue;
-        });
-      }, 1000);
-      
-      // Her 3 saniyede bir açık maçları kontrol et
-      matchCheckInterval = setInterval(async () => {
-        if (!player || pvp.matchId) return;
-        
-        try {
-          const snap = await get(ref(db, "matches"));
-          const matchesObj = snap.val() || {};
-          
-          // Açık maç ara (guest'i olmayan)
-          for (const k of Object.keys(matchesObj)) {
-            const m = matchesObj[k];
-            if (m && m.players && !m.players.guest && m.players.host !== player.name) {
-              console.log("🎮 Aday maç bulundu! Katılınıyor...");
-              
-              // Maça katıl
-              await update(ref(db, `matches/${k}/players`), { guest: player.name });
-              
-              // Timer'ları durdur
-              if (timer) clearInterval(timer);
-              if (matchCheckInterval) clearInterval(matchCheckInterval);
-              
-              setIsSearching(false);
-              
-              // Maçı dinlemeye başla
-              onValue(ref(db, `matches/${k}`), (snap2) => {
-                const val = snap2.val();
-                setPvp(prev => ({ ...prev, matchData: val }));
-              });
-              
-              setPvp({ matchId: k, matchData: null, side: "guest" });
-              notify("🎮 Rakip bulundu! Maç başlıyor...");
-              break;
-            }
-          }
-        } catch (error) {
-          console.error("Eşleştirme hatası:", error);
         }
-      }, 3000);
-    }
-    
-    return () => {
-      if (timer) clearInterval(timer);
-      if (matchCheckInterval) clearInterval(matchCheckInterval);
-    };
-  }, [isSearching, player, pvp.matchId]);
+      } catch (error) {
+        console.error("Eşleştirme hatası:", error);
+      }
+    }, 3000);
+  }
 
+  return () => {
+    if (timer) clearInterval(timer);
+    if (matchCheckInterval) clearInterval(matchCheckInterval);
+  };
+}, [isSearching, player, pvp.matchId]);
   // ARENA'YA TIKLAYINCA
   const handleArenaClick = () => {
     const r2Levels = REGIONS.find((r) => r.id === "r2")!.levels.length;
@@ -471,88 +488,89 @@ export default function Game() {
     setScreen("arena");
   };
 
-  // EŞLEŞTİRME BUL BUTONU - DÜZELTİLDİ
-  const handleFindMatch = async () => {
-    console.log("🎮 Eşleştirme bul butonuna tıklandı!");
+  // EŞLEŞTİRME BUL BUTONU
+const handleFindMatch = async () => {
+  console.log("🎮 Eşleştirme bul butonuna tıklandı!");
+  
+  if (!player) {
+    notify("Önce giriş yapmalısın!");
+    return;
+  }
+  
+  try {
+    // Önce kendi maçını oluştur
+    const pool = QUESTIONS.slice();
+    const qs = shuffle(pool).slice(0, 30);
+    const newRef = push(ref(db, "matches"));
+    const matchId = newRef.key!;
     
-    if (!player) {
-      notify("Önce giriş yapmalısın!");
-      return;
-    }
+    const initialState = {
+      id: matchId,
+      players: { host: player.name, guest: null },
+      state: {
+        hostHp: getStats(player).maxHp,
+        guestHp: 0,
+        turn: "host" as const,
+        qIdx: 0,
+        qs,
+        started: false,
+        lastAnswer: null,
+        turnStartTime: Date.now(),
+        log: null,
+      },
+      createdAt: Date.now(),
+    };
     
-    try {
-      // Önce kendi maçını oluştur
-      const pool = QUESTIONS.slice();
-      const qs = shuffle(pool).slice(0, 30);
-      const newRef = push(ref(db, "matches"));
-      const matchId = newRef.key!;
-      
-      const initialState = {
-        id: matchId,
-        players: { host: player.name, guest: null },
-        state: {
-          hostHp: getStats(player).maxHp,
-          guestHp: 0,
-          turn: "host" as const,
-          qIdx: 0,
-          qs,
-          started: false,
-          lastAnswer: null,
-          turnStartTime: Date.now(),
-          log: null,
-        },
-        createdAt: Date.now(),
-      };
-      
-      console.log("Maç oluşturuluyor:", matchId);
-      await set(newRef, initialState);
-      
-      // Kendi maçını dinle
-      onValue(ref(db, `matches/${matchId}`), (snap) => {
-        const val = snap.val();
-        console.log("Maç güncellendi:", val);
-        setPvp(prev => ({ ...prev, matchData: val }));
-        
-        // Guest katıldıysa maçı başlat
-        if (val && val.players && val.players.guest && val.state && !val.state.started) {
-          const guestHp = getStats(player).maxHp;
-          update(ref(db, `matches/${matchId}/state`), { guestHp, started: true });
-          notify("🎮 Rakip katıldı! Maç başlıyor!");
-          setIsSearching(false);
-        }
-      });
-      
-      setPvp({ matchId, matchData: null, side: "host" });
-      setArenaView("search");
-      setIsSearching(true);
-      
-    } catch (error) {
-      console.error("Maç oluşturma hatası:", error);
-      notify("Maç oluşturulamadı!");
-    }
-  };
-
-  // İPTAL ET BUTONU
-  const handleCancelSearch = async () => {
-    console.log("❌ Arama iptal edildi");
+    console.log("Maç oluşturuluyor:", matchId);
+    await set(newRef, initialState);
     
-    setIsSearching(false);
-    
-    // Kendi maçını sil
-    if (pvp.matchId) {
-      try {
-        off(ref(db, `matches/${pvp.matchId}`));
-        await set(ref(db, `matches/${pvp.matchId}`), null);
-      } catch (error) {
-        console.error("Maç silme hatası:", error);
+    // Kendi maçını dinle
+    const matchRef = ref(db, `matches/${matchId}`);
+    onValue(matchRef, (snap) => {
+      const val = snap.val();
+      console.log("Kendi maç güncellendi:", val);
+      setPvp(prev => ({ ...prev, matchData: val }));
+      
+      // Guest katıldıysa maçı başlat
+      if (val && val.players && val.players.guest && val.state && !val.state.started) {
+        console.log("🎮 Rakip katıldı! Maç başlıyor!");
+        const guestHp = getStats(player).maxHp;
+        update(ref(db, `matches/${matchId}/state`), { guestHp, started: true });
+        notify("🎮 Rakip katıldı! Maç başlıyor!");
+        setIsSearching(false);
       }
-    }
+    });
     
-    setPvp({ matchId: null, matchData: null, side: null });
-    setArenaView("menu");
-    setSearchTimeLeft(50);
-  };
-
+    setPvp({ matchId, matchData: null, side: "host" });
+    setArenaView("search");
+    setIsSearching(true);
+    
+  } catch (error) {
+    console.error("Maç oluşturma hatası:", error);
+    notify("Maç oluşturulamadı!");
+  }
+};
+// İPTAL ET BUTONU
+const handleCancelSearch = async () => {
+  console.log("❌ Arama iptal edildi");
+  
+  setIsSearching(false);
+  
+  // Kendi maçını sil
+  if (pvp.matchId) {
+    try {
+      off(ref(db, `matches/${pvp.matchId}`));
+      await set(ref(db, `matches/${pvp.matchId}`), null);
+      console.log("Maç silindi:", pvp.matchId);
+    } catch (error) {
+      console.error("Maç silme hatası:", error);
+    }
+  }
+  
+  setPvp({ matchId: null, matchData: null, side: null });
+  setArenaView("menu");
+  setSearchTimeLeft(50);
+};
   // MAÇTAN AYRIL
   const handleLeaveMatch = async () => {
     if (pvp.matchId) {
