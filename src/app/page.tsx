@@ -201,35 +201,26 @@ const REGIONS: Region[] = [
 
 type Q = { q: string; o: string[]; a: number; topic: string };
 const QUESTIONS: Q[] = [
-  // İLETİŞİM
   { q: "İletişimi başlatan öğe?", o: ["Alıcı", "Kanal", "Gönderici", "Dönüt"], a: 2, topic: "iletisim" },
   { q: "Sözlü iletişim türü?", o: ["Mektup", "Panel", "Dilekçe", "Roman"], a: 1, topic: "iletisim" },
   { q: "Kitle iletişim aracı örneği?", o: ["Radyo", "Mektup", "Günlük", "Roman"], a: 0, topic: "iletisim" },
   { q: "İletişimde geri bildirime ne denir?", o: ["Dönüt", "Kanal", "Gönderi", "Alıcı"], a: 0, topic: "iletisim" },
   { q: "İletişim modelinde kanal ne işe yarar?", o: ["Mesajı taşıma", "Alıcıyı seçme", "Şifreleme", "Yazma"], a: 0, topic: "iletisim" },
-
-  // HİKAYE / ROMAN
   { q: "Olay hikâyesi temsilcisi kimdir?", o: ["Sait Faik", "Ömer Seyfettin", "Memduh Şevket", "Nurullah Ataç"], a: 1, topic: "hikaye" },
   { q: "İlk yerli roman hangisidir?", o: ["Taaşşuk-ı Talat", "İntibah", "Eylül", "Cezmi"], a: 0, topic: "hikaye" },
   { q: "Çalıkuşu romanının yazarı?", o: ["Reşat Nuri", "Halide Edip", "Yakup Kadri", "Refik Halit"], a: 1, topic: "hikaye" },
   { q: "Dede Korkut hikâyeleri kaç tane?", o: ["12", "10", "14", "8"], a: 0, topic: "hikaye" },
   { q: "Olay örgüsü en çok hangi türde önemlidir?", o: ["Roman", "Şiir", "Makale", "Deneme"], a: 0, topic: "hikaye" },
-
-  // ŞİİR
   { q: "Divan edebiyatında nazım birimi nedir?", o: ["Dörtlük", "Beyit", "Bent", "Kıta"], a: 1, topic: "siir" },
   { q: "Halk şiirinde 11'li ölçü hangi türde kullanılır?", o: ["Koşma", "Mani", "Semai", "Destan"], a: 0, topic: "siir" },
   { q: "Sessiz Gemi şiiri kime aittir?", o: ["Yahya Kemal", "Ahmet Haşim", "Necip Fazıl", "Akif Ersoy"], a: 0, topic: "siir" },
   { q: "Garip akımının kurucusu kimdir?", o: ["Orhan Veli", "Cemal Süreya", "Edip Cansever", "Turgut Uyar"], a: 0, topic: "siir" },
   { q: "İkinci Yeni hareketinden biri kimdir?", o: ["Cemal Süreya", "Orhan Veli", "Oktay Rifat", "Melih Cevdet"], a: 0, topic: "siir" },
-
-  // GENEL / TARİH
   { q: "İlk tarihi roman hangisidir?", o: ["Cezmi", "İntibah", "Vatan", "Eylül"], a: 0, topic: "genel" },
   { q: "Milli Edebiyat hareketinin öncüsü kimdir?", o: ["Ziya Gökalp", "Namık Kemal", "Fuzuli", "Baki"], a: 0, topic: "genel" },
   { q: "Beş Hececilerden biri kimdir?", o: ["Faruk Nafiz", "Orhan Veli", "Cemal Süreya", "Nazım Hikmet"], a: 0, topic: "genel" },
   { q: "Vatan şairi olarak bilinen kimdir?", o: ["Namık Kemal", "Ziya Paşa", "Şinasi", "Tevfik Fikret"], a: 0, topic: "genel" },
   { q: "İstiklal Marşı'nın vezni nedir?", o: ["Hece", "Aruz", "Serbest", "Syllabic"], a: 1, topic: "genel" },
-
-  // Daha fazla soru
   { q: "Beş Hececiler akımı hangi alandır?", o: ["Şiir", "Roman", "Tiyatro", "Deneme"], a: 0, topic: "siir" },
   { q: "İlk yerli roman yazarlarından biri?", o: ["Şemsettin Sami", "Halide Edip", "Yakup Kadri", "Refik Halit"], a: 0, topic: "hikaye" },
   { q: "Edebi türlerden hangisi düzyazıdır?", o: ["Roman", "Şiir", "Şarkı", "Mani"], a: 0, topic: "genel" },
@@ -291,13 +282,12 @@ export default function Game() {
   const [lastAnswer, setLastAnswer] = useState<{ idx: number | null; correct: boolean | null }>({ idx: null, correct: null });
   const [arenaView, setArenaView] = useState<ArenaView>("menu");
   const [answerStartTime, setAnswerStartTime] = useState<number | null>(null);
-  const [searchTimer, setSearchTimer] = useState<NodeJS.Timeout | null>(null);
+  const [searchInterval, setSearchInterval] = useState<NodeJS.Timeout | null>(null);
+  const [searchTimeLeft, setSearchTimeLeft] = useState<number>(50);
+  const [leaderboard, setLeaderboard] = useState<Array<{name: string, score: number, lvl: number}>>([]);
 
   // PvP state
   const [pvp, setPvp] = useState<PvPState>({ searching: false, matchId: null, matchData: null, isHost: false, side: null, searchStartTime: undefined });
-
-  // Sıralama için leaderboard state
-  const [leaderboard, setLeaderboard] = useState<Array<{name: string, score: number, lvl: number}>>([]);
 
   // Confetti canvas ref
   const confettiRef = useRef<HTMLCanvasElement | null>(null);
@@ -328,13 +318,14 @@ export default function Game() {
     if (p.equipped.arm) hp += p.equipped.arm.val;
     return { atk, maxHp: hp };
   };
+  
   const save = (p: Player) => {
     p.regionProgress = p.regionProgress || {};
-REGIONS.forEach((r) => {
-  if (p.regionProgress[r.id] === undefined) {
-    p.regionProgress[r.id] = 0;
-  }
-});
+    REGIONS.forEach((r) => {
+      if (p.regionProgress[r.id] === undefined) {
+        p.regionProgress[r.id] = 0;
+      }
+    });
     if (p.name !== "ADMIN" && p.name !== "ADMIN2" && p.name !== "ADMIN3") {
       try {
         localStorage.setItem(SAVE_KEY + p.name, JSON.stringify(p));
@@ -342,7 +333,7 @@ REGIONS.forEach((r) => {
       } catch (e) {}
     }
     setPlayer({ ...p });
-    loadLeaderboard(); // Leaderboard'u güncelle
+    loadLeaderboard();
   };
 
   // Leaderboard yükle
@@ -369,71 +360,75 @@ REGIONS.forEach((r) => {
 
   useEffect(() => {
     setMounted(true);
-    loadLeaderboard(); // İlk yüklemede leaderboard'u al
+    loadLeaderboard();
     return () => {
       if (pvp.matchId) {
         try {
           off(ref(db, `matches/${pvp.matchId}`));
         } catch {}
       }
-      if (searchTimer) {
-        clearInterval(searchTimer);
+      if (searchInterval) {
+        clearInterval(searchInterval);
       }
     };
   }, []);
 
-  // 50 saniye timeout kontrolü - DÜZELTİLDİ
+  // 50 SANİYE TIMER KONTROLÜ
   useEffect(() => {
+    console.log("Timer useEffect çalıştı. searching:", pvp.searching);
+    
     if (pvp.searching && pvp.searchStartTime) {
-      // Önceki timer'ı temizle
-      if (searchTimer) {
-        clearInterval(searchTimer);
+      console.log("Timer başlatılıyor. Başlangıç zamanı:", pvp.searchStartTime);
+      
+      if (searchInterval) {
+        clearInterval(searchInterval);
       }
       
-      // Yeni timer başlat
-      const timer = setInterval(() => {
-        const elapsed = Math.floor((Date.now() - pvp.searchStartTime!) / 1000);
-        console.log("Arama süresi:", elapsed, "saniye");
+      const interval = setInterval(() => {
+        const now = Date.now();
+        const elapsedSeconds = Math.floor((now - pvp.searchStartTime!) / 1000);
+        const remaining = Math.max(0, 50 - elapsedSeconds);
         
-        if (elapsed >= 50) { // 50 saniye
-          console.log("50 saniye doldu, bot ile eşleşiyor...");
-          clearInterval(timer);
+        console.log("Geçen süre:", elapsedSeconds, "Kalan süre:", remaining);
+        setSearchTimeLeft(remaining);
+        
+        if (elapsedSeconds >= 50) {
+          console.log("50 SANİYE DOLDU! Bot ile eşleştiriliyor...");
+          clearInterval(interval);
+          setSearchInterval(null);
+          
           setPvp(prev => ({ ...prev, searching: false, searchStartTime: undefined }));
           startBotArenaMatch();
           notify("Rakip bulunamadı, bot ile eşleştiniz!");
         }
       }, 1000);
       
-      setSearchTimer(timer);
+      setSearchInterval(interval);
       
       return () => {
-        if (timer) {
-          clearInterval(timer);
-        }
+        console.log("Timer temizleniyor");
+        if (interval) clearInterval(interval);
       };
     } else {
-      if (searchTimer) {
-        clearInterval(searchTimer);
-        setSearchTimer(null);
+      if (searchInterval) {
+        clearInterval(searchInterval);
+        setSearchInterval(null);
       }
+      setSearchTimeLeft(50);
     }
   }, [pvp.searching, pvp.searchStartTime]);
 
-  // Sayaç gösterimi için - DÜZELTİLDİ
   const getSearchTimeLeft = () => {
-    if (!pvp.searchStartTime) return 50;
-    const elapsed = Math.floor((Date.now() - pvp.searchStartTime) / 1000);
-    const left = Math.max(0, 50 - elapsed);
-    console.log("Kalan süre:", left, "saniye");
-    return left;
+    return searchTimeLeft;
   };
 
   const startBotArenaMatch = () => {
+    console.log("BOT MAÇI BAŞLATILIYOR!");
+    
     const stats = getStats(player!);
-    const botAtk = Math.floor(stats.atk * 0.8); // Bot bizim gücümüzün %80'i
+    const botAtk = Math.floor(stats.atk * 0.8);
     const botHp = stats.maxHp;
     
-    // Bot savaşını başlat
     setBotMatch(true);
     setTurn("p1");
     
@@ -450,16 +445,16 @@ REGIONS.forEach((r) => {
       qIdx: 0,
       timer: 20,
       combo: 0,
-      log: null,
+      log: "Bot ile savaş başlıyor!",
       wait: false,
       dmgText: null,
       shaking: false,
     });
+    
     setScreen("battle");
   };
 
   const handleArenaClick = () => {
-    // Arena kilidi kontrolü
     const r2Levels = REGIONS.find((r) => r.id === "r2")!.levels.length;
     const r2Progress = player!.regionProgress["r2"] ?? 0;
 
@@ -468,7 +463,6 @@ REGIONS.forEach((r) => {
       return;
     }
 
-    // İlk defa arena'ya giriyorsa kuralları göster
     if (!player!.arenaRulesSeen) {
       setArenaView("rules");
     } else {
@@ -477,97 +471,69 @@ REGIONS.forEach((r) => {
     setScreen("arena");
   };
 
-  // Yardımcı: shuffle
   const shuffle = <T,>(arr: T[]): T[] => arr.slice().sort(() => Math.random() - 0.5);
 
-  // --- CONFETTI ---
   const launchConfetti = async () => {
-  if (typeof window === "undefined") return;
-
-  try {
-    const mod: any = await import("canvas-confetti");
-    const confetti = mod.default || mod;
-
-    confetti({
-      particleCount: 120,
-      spread: 140,
-      origin: { y: 0.6 },
-    });
-    return;
-  } catch {
-    const canvas = confettiRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const w = (canvas.width = window.innerWidth);
-    const h = (canvas.height = window.innerHeight);
-
-    const particles: {
-      x: number;
-      y: number;
-      vx: number;
-      vy: number;
-      c: string;
-      life: number;
-    }[] = [];
-
-    for (let i = 0; i < 80; i++) {
-      particles.push({
-        x: w / 2 + (Math.random() - 0.5) * 200,
-        y: h / 2 + (Math.random() - 0.5) * 50,
-        vx: (Math.random() - 0.5) * 8,
-        vy: -6 - Math.random() * 6,
-        c: ["#ff4b2b", "#ffb400", "#00eaff", "#0f6", "#8a2be2"][
-          Math.floor(Math.random() * 5)
-        ],
-        life: 80 + Math.random() * 40,
-      });
+    if (typeof window === "undefined") return;
+    try {
+      const mod: any = await import("canvas-confetti");
+      const confetti = mod.default || mod;
+      confetti({ particleCount: 120, spread: 140, origin: { y: 0.6 } });
+      return;
+    } catch {
+      const canvas = confettiRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      const w = (canvas.width = window.innerWidth);
+      const h = (canvas.height = window.innerHeight);
+      const particles: { x: number; y: number; vx: number; vy: number; c: string; life: number; }[] = [];
+      for (let i = 0; i < 80; i++) {
+        particles.push({
+          x: w / 2 + (Math.random() - 0.5) * 200,
+          y: h / 2 + (Math.random() - 0.5) * 50,
+          vx: (Math.random() - 0.5) * 8,
+          vy: -6 - Math.random() * 6,
+          c: ["#ff4b2b", "#ffb400", "#00eaff", "#0f6", "#8a2be2"][Math.floor(Math.random() * 5)],
+          life: 80 + Math.random() * 40,
+        });
+      }
+      let raf = 0;
+      const tick = () => {
+        ctx.clearRect(0, 0, w, h);
+        for (const p of particles) {
+          p.vy += 0.25;
+          p.x += p.vx;
+          p.y += p.vy;
+          p.life--;
+          ctx.fillStyle = p.c;
+          ctx.fillRect(p.x, p.y, 6, 10);
+        }
+        for (let i = particles.length - 1; i >= 0; i--) {
+          if (particles[i].life <= 0) particles.splice(i, 1);
+        }
+        if (particles.length) raf = requestAnimationFrame(tick);
+        else ctx.clearRect(0, 0, w, h);
+      };
+      raf = requestAnimationFrame(tick);
+      setTimeout(() => cancelAnimationFrame(raf), 5000);
     }
+  };
 
-    let raf = 0;
-    const tick = () => {
-      ctx.clearRect(0, 0, w, h);
-      for (const p of particles) {
-        p.vy += 0.25;
-        p.x += p.vx;
-        p.y += p.vy;
-        p.life--;
-        ctx.fillStyle = p.c;
-        ctx.fillRect(p.x, p.y, 6, 10);
-      }
-
-      for (let i = particles.length - 1; i >= 0; i--) {
-        if (particles[i].life <= 0) particles.splice(i, 1);
-      }
-
-      if (particles.length) raf = requestAnimationFrame(tick);
-      else ctx.clearRect(0, 0, w, h);
-    };
-
-    raf = requestAnimationFrame(tick);
-    setTimeout(() => cancelAnimationFrame(raf), 5000);
-  }
-};
-
-  // --- ARENA BOT MANTIĞI ---
   useEffect(() => {
     if (battle.active && botMatch && turn === "p2" && !battle.wait) {
       const timer = setTimeout(() => {
-        const hit = Math.random() > 0.4; // %60 doğruluk
+        const hit = Math.random() > 0.4;
         handleMove(hit);
       }, 1400 + Math.random() * 1400);
       return () => clearTimeout(timer);
     }
   }, [battle, turn, botMatch]);
 
-  // --- AUTH ---
   const handleAuth = () => {
     if (!auth.user || !auth.pass) return notify("Boş bırakma!");
     const key = SAVE_KEY + auth.user;
     
-    // ADMIN hesapları
     if ((auth.user === "ADMIN" || auth.user === "ADMIN2" || auth.user === "ADMIN3") && auth.pass === "1234") {
       const adminP: Player = {
         name: auth.user,
@@ -582,7 +548,7 @@ REGIONS.forEach((r) => {
         equipped: { wep: null, arm: null },
         jokers: { heal: 99, "5050": 99, skip: 99 },
         mistakes: [],
-        score: 1000, // Adminlerin de skoru olsun
+        score: 1000,
         unlockedRegions: ["tut", "r1", "r2", "r3"],
         regionProgress: { tut: 2, r1: 2, r2: 2, r3: 1 },
         unlockedCostumes: Object.keys(COSTUMES),
@@ -591,12 +557,11 @@ REGIONS.forEach((r) => {
         arenaRulesSeen: true,
       };
       
-      // Admin skorunu Firebase'e kaydet
       update(ref(db, "users/" + auth.user), { score: adminP.score, lvl: adminP.lvl }).catch(() => {});
       
       setPlayer(adminP);
       setScreen("menu");
-      loadLeaderboard(); // Leaderboard'u güncelle
+      loadLeaderboard();
       return;
     }
 
@@ -624,7 +589,6 @@ REGIONS.forEach((r) => {
         arenaRulesSeen: false,
       };
       localStorage.setItem(key, JSON.stringify(newP));
-      // Yeni kullanıcıyı Firebase'e ekle
       update(ref(db, "users/" + auth.user), { score: 0, lvl: 1 }).catch(() => {});
       setAuth({ ...auth, reg: false });
       notify("Kayıt Oldun!");
@@ -635,11 +599,10 @@ REGIONS.forEach((r) => {
       if (p.pass !== auth.pass) return notify("Şifre yanlış!");
       setPlayer(p);
       setScreen("menu");
-      loadLeaderboard(); // Leaderboard'u güncelle
+      loadLeaderboard();
     }
   };
 
-  // --- SAVAŞ (MACERA / ARENA) ---
   const startBattle = (r: Region, l: Level, isBot: boolean = false) => {
     playSound("click");
     setModal(null);
@@ -671,7 +634,6 @@ REGIONS.forEach((r) => {
     setScreen("battle");
   };
 
-  // Local answer handler (single player / bot)
   const handleMove = (correct: boolean) => {
     if (!battle.active) return;
     let nb = { ...battle };
@@ -703,58 +665,42 @@ REGIONS.forEach((r) => {
             np.maxXp = Math.floor(np.maxXp * 1.2);
             notify("SEVİYE ATLADIN!");
           }
-if (nb.region && nb.level) {
-  np.regionProgress = np.regionProgress || {};
-
-  const currentRegionId = nb.region.id;
-  const currentLevelIndex = nb.region.levels.findIndex(
-    (x) => x.id === nb.level?.id
-  );
-
-  if (currentLevelIndex >= 0) {
-    const currentProgress = np.regionProgress[currentRegionId] ?? 0;
-    np.regionProgress[currentRegionId] = Math.max(
-      currentProgress,
-      currentLevelIndex + 1
-    );
-  }
-}
-
-if (nb.level?.isBoss && nb.region) {
-  const region = nb.region;
-  np.unlockedRegions = np.unlockedRegions || ["tut"];
-  np.unlockedCostumes = np.unlockedCostumes || ["default"];
-
-
-  np.regionProgress = np.regionProgress || {};
-
-  if (region.unlockC && !np.unlockedCostumes.includes(region.unlockC)) {
-    np.unlockedCostumes.push(region.unlockC);
-  }
-
-  if (region.levels && region.levels.length > 0) {
-    np.regionProgress[region.id] = region.levels.length;
-  }
-
- const rIdx = REGIONS.findIndex((r) => r.id === region.id);
-
-if (rIdx !== -1 && rIdx < REGIONS.length - 1) {
-  const nextR = REGIONS[rIdx + 1].id;
- 
-  if (nextR === "r3") {
-    if (np.regionProgress["r2"] >= REGIONS.find(r => r.id === "r2")!.levels.length) {
-      if (!np.unlockedRegions.includes(nextR)) {
-        np.unlockedRegions.push(nextR);
-      }
-    }
-  } else {
-    if (!np.unlockedRegions.includes(nextR)) {
-      np.unlockedRegions.push(nextR);
-    }
-  }
-}
-}
-
+          if (nb.region && nb.level) {
+            np.regionProgress = np.regionProgress || {};
+            const currentRegionId = nb.region.id;
+            const currentLevelIndex = nb.region.levels.findIndex((x) => x.id === nb.level?.id);
+            if (currentLevelIndex >= 0) {
+              const currentProgress = np.regionProgress[currentRegionId] ?? 0;
+              np.regionProgress[currentRegionId] = Math.max(currentProgress, currentLevelIndex + 1);
+            }
+          }
+          if (nb.level?.isBoss && nb.region) {
+            const region = nb.region;
+            np.unlockedRegions = np.unlockedRegions || ["tut"];
+            np.unlockedCostumes = np.unlockedCostumes || ["default"];
+            np.regionProgress = np.regionProgress || {};
+            if (region.unlockC && !np.unlockedCostumes.includes(region.unlockC)) {
+              np.unlockedCostumes.push(region.unlockC);
+            }
+            if (region.levels && region.levels.length > 0) {
+              np.regionProgress[region.id] = region.levels.length;
+            }
+            const rIdx = REGIONS.findIndex((r) => r.id === region.id);
+            if (rIdx !== -1 && rIdx < REGIONS.length - 1) {
+              const nextR = REGIONS[rIdx + 1].id;
+              if (nextR === "r3") {
+                if (np.regionProgress["r2"] >= REGIONS.find(r => r.id === "r2")!.levels.length) {
+                  if (!np.unlockedRegions.includes(nextR)) {
+                    np.unlockedRegions.push(nextR);
+                  }
+                }
+              } else {
+                if (!np.unlockedRegions.includes(nextR)) {
+                  np.unlockedRegions.push(nextR);
+                }
+              }
+            }
+          }
           save(np);
           setScreen("menu");
           return;
@@ -784,19 +730,7 @@ if (rIdx !== -1 && rIdx < REGIONS.length - 1) {
           np.hp = pStats.maxHp;
           save(np);
           notify("YENİLDİN...");
-          setBattle({
-  active: false,
-  enemyHp: 0,
-  maxEnemyHp: 0,
-  qs: [],
-  qIdx: 0,
-  timer: 20,
-  combo: 0,
-  log: null,
-  wait: false,
-  dmgText: null,
-  shaking: false,
-});
+          setBattle({ active: false, enemyHp: 0, maxEnemyHp: 0, qs: [], qIdx: 0, timer: 20, combo: 0, log: null, wait: false, dmgText: null, shaking: false });
           setScreen("menu");
           return;
         }
@@ -813,7 +747,6 @@ if (rIdx !== -1 && rIdx < REGIONS.length - 1) {
     setBattle(nb);
   };
 
-  // Jokerler (local)
   const useJoker = (id: "heal" | "5050" | "skip") => {
     if (!battle.active) return;
     if (!player) return;
@@ -849,104 +782,99 @@ if (rIdx !== -1 && rIdx < REGIONS.length - 1) {
     save(np);
   };
 
-const buyItem = (it: Item) => {
-  if (!player) return;
+  const buyItem = (it: Item) => {
+    if (!player) return;
+    const np = { ...player };
+    if (!np.jokers) np.jokers = { heal: 0, "5050": 0, skip: 0 };
 
-  const np = { ...player };
-  if (!np.jokers) np.jokers = { heal: 0, "5050": 0, skip: 0 };
-
-  // Admin hesaplarına bedava
-  if (np.name === "ADMIN" || np.name === "ADMIN2" || np.name === "ADMIN3") {
-    if (it.type === "joker") {
-      const jid = it.jokerId;
-      if (jid) np.jokers[jid] = (np.jokers[jid] || 0) + 1;
+    if (np.name === "ADMIN" || np.name === "ADMIN2" || np.name === "ADMIN3") {
+      if (it.type === "joker") {
+        const jid = it.jokerId;
+        if (jid) np.jokers[jid] = (np.jokers[jid] || 0) + 1;
+        save(np);
+        notify("ADMIN: Joker eklendi!");
+        return;
+      }
+      if (!np.inventory.some((x) => x.id === it.id)) {
+        np.inventory.push(it);
+      }
       save(np);
-      notify("ADMIN: Joker eklendi!");
+      notify("ADMIN: Ürün eklendi!");
       return;
     }
 
-    if (!np.inventory.some((x) => x.id === it.id)) {
-      np.inventory.push(it);
+    if (np.gold < it.cost) {
+      notify("Yeterli altın yok!");
+      return;
     }
-    save(np);
-    notify("ADMIN: Ürün eklendi!");
-    return;
-  }
 
-  if (np.gold < it.cost) {
-    notify("Yeterli altın yok!");
-    return;
-  }
+    if (it.type === "joker") {
+      np.gold -= it.cost;
+      const jid = it.jokerId;
+      if (jid) np.jokers[jid] = (np.jokers[jid] || 0) + 1;
+      save(np);
+      notify("Joker satın alındı!");
+      return;
+    }
 
-  if (it.type === "joker") {
+    if (np.inventory.some((x) => x.id === it.id)) {
+      notify("Bu item zaten sende var!");
+      return;
+    }
+
     np.gold -= it.cost;
-    const jid = it.jokerId;
-    if (jid) np.jokers[jid] = (np.jokers[jid] || 0) + 1;
+    np.inventory.push(it);
     save(np);
-    notify("Joker satın alındı!");
-    return;
-  }
+    notify("Satın alındı!");
+  };
 
-  if (np.inventory.some((x) => x.id === it.id)) {
-    notify("Bu item zaten sende var!");
-    return;
-  }
+  const equipItem = (it: Item) => {
+    if (!player) return;
+    const np = { ...player };
+    np.inventory = np.inventory.filter((x) => x.id !== it.id);
 
-  np.gold -= it.cost;
-  np.inventory.push(it);
-
-  save(np);
-  notify("Satın alındı!");
-};
-
-const equipItem = (it: Item) => {
-  if (!player) return;
-
-  const np = { ...player };
-  
-  np.inventory = np.inventory.filter((x) => x.id !== it.id);
-
-  if (it.type === "wep") {
-    if (np.equipped.wep) {
-      np.inventory.push(np.equipped.wep);
+    if (it.type === "wep") {
+      if (np.equipped.wep) {
+        np.inventory.push(np.equipped.wep);
+      }
+      np.equipped.wep = it;
+      save(np);
+      notify("⚔️ Silah kuşanıldı!");
+      return;
     }
-    np.equipped.wep = it;
-    save(np);
-    notify("⚔️ Silah kuşanıldı!");
-    return;
-  }
 
-  if (it.type === "arm") {
-    if (np.equipped.arm) {
-      np.inventory.push(np.equipped.arm);
+    if (it.type === "arm") {
+      if (np.equipped.arm) {
+        np.inventory.push(np.equipped.arm);
+      }
+      np.equipped.arm = it;
+      save(np);
+      notify("🛡️ Zırh kuşanıldı!");
+      return;
     }
-    np.equipped.arm = it;
+  };
+
+  const sellItem = (it: Item) => {
+    if (!player) return;
+    const np = { ...player };
+    np.inventory = np.inventory.filter((x) => x.id !== it.id);
+    const sellPrice = Math.floor(it.cost / 2);
+    np.gold += sellPrice;
     save(np);
-    notify("🛡️ Zırh kuşanıldı!");
-    return;
-  }
-};
-const sellItem = (it: Item) => {
-  if (!player) return;
+    notify(`💰 ${it.name} satıldı! +${sellPrice} Altın`);
+  };
 
-  const np = { ...player };
-
-  np.inventory = np.inventory.filter((x) => x.id !== it.id);
-
-  const sellPrice = Math.floor(it.cost / 2);
-  np.gold += sellPrice;
-
-  save(np);
-  notify(`💰 ${it.name} satıldı! +${sellPrice} Altın`);
-};
-
-  // --- PvP ---
+  // --- PVP FONKSİYONLARI ---
   const createPvPMatch = async () => {
     if (!player) return notify("Giriş yapmalısın");
+    
+    console.log("Yeni maç oluşturuluyor");
+    
     const pool = QUESTIONS.slice();
     const qs = shuffle(pool).slice(0, Math.min(30, pool.length));
     const newRef = push(ref(db, "matches"));
     const matchId = newRef.key!;
+    
     const initialState = {
       id: matchId,
       players: { host: player.name, guest: null },
@@ -963,65 +891,116 @@ const sellItem = (it: Item) => {
       },
       createdAt: Date.now(),
     };
+    
+    console.log("Maç oluşturuldu:", matchId, initialState);
+    
     await set(newRef, initialState);
-    setPvp({ searching: true, matchId, matchData: initialState, isHost: true, side: "host", searchStartTime: Date.now() });
+    
+    const startTime = Date.now();
+    console.log("Arama başlangıç zamanı:", startTime);
+    
+    setPvp({ 
+      searching: true, 
+      matchId, 
+      matchData: initialState, 
+      isHost: true, 
+      side: "host", 
+      searchStartTime: startTime
+    });
+    
     onValue(ref(db, `matches/${matchId}`), (snap) => {
       const val = snap.val();
+      console.log("Maç güncellendi:", val);
       setPvp((s) => ({ ...s, matchData: val }));
+      
       if (val && val.players && val.players.guest && val.state && !val.state.started && val.players.host === player.name) {
-        const guestStats = getStats(player); // Gerçek rakibin istatistikleri için guest'in player objesine ihtiyacımız var
+        console.log("Guest katıldı, maç başlatılıyor");
+        const guestStats = getStats(player);
         const guestHp = guestStats.maxHp;
         update(ref(db, `matches/${matchId}/state`), { guestHp, started: true });
       }
     });
+    
     notify(`Rakip aranıyor... (50 saniye içinde bot ile eşleşir)`);
   };
 
   const findAndJoinMatch = async () => {
     if (!player) return notify("Giriş yapmalısın");
-    const snap = await get(ref(db, "matches"));
-    const matchesObj = snap.val() || {};
-    let candidateId: string | null = null;
-    for (const k of Object.keys(matchesObj)) {
-      const m = matchesObj[k];
-      if (m && m.players && !m.players.guest && m.players.host !== player.name) {
-        candidateId = k;
-        break;
+    
+    console.log("Eşleştirme bul başlatıldı");
+    
+    try {
+      const snap = await get(ref(db, "matches"));
+      const matchesObj = snap.val() || {};
+      console.log("Mevcut maçlar:", matchesObj);
+      
+      let candidateId: string | null = null;
+      
+      for (const k of Object.keys(matchesObj)) {
+        const m = matchesObj[k];
+        if (m && m.players && !m.players.guest && m.players.host !== player.name) {
+          candidateId = k;
+          console.log("Aday maç bulundu:", candidateId);
+          break;
+        }
       }
+      
+      if (!candidateId) {
+        console.log("Açık maç yok, yeni maç oluşturuluyor");
+        await createPvPMatch();
+        return;
+      }
+      
+      console.log("Maça katılınıyor:", candidateId);
+      await update(ref(db, `matches/${candidateId}/players`), { guest: player.name });
+      
+      setPvp({ 
+        searching: false, 
+        matchId: candidateId, 
+        matchData: null, 
+        isHost: false, 
+        side: "guest", 
+        searchStartTime: undefined 
+      });
+      
+      onValue(ref(db, `matches/${candidateId}`), (snap2) => {
+        const val = snap2.val();
+        console.log("Maç güncellendi:", val);
+        setPvp((s) => ({ ...s, matchData: val }));
+      });
+      
+      setScreen("battle");
+      notify(`Maça katıldın!`);
+    } catch (error) {
+      console.error("Eşleştirme hatası:", error);
+      notify("Eşleştirme sırasında hata oluştu!");
     }
-    if (!candidateId) {
-      await createPvPMatch();
-      return;
-    }
-    await update(ref(db, `matches/${candidateId}/players`), { guest: player.name });
-    setPvp({ searching: false, matchId: candidateId, matchData: null, isHost: false, side: "guest", searchStartTime: undefined });
-    onValue(ref(db, `matches/${candidateId}`), (snap2) => {
-      const val = snap2.val();
-      setPvp((s) => ({ ...s, matchData: val }));
-    });
-    setScreen("battle");
-    notify(`Maça katıldın!`);
   };
 
   const cancelSearch = async () => {
-    if (searchTimer) {
-      clearInterval(searchTimer);
-      setSearchTimer(null);
+    console.log("Arama iptal ediliyor");
+    
+    if (searchInterval) {
+      clearInterval(searchInterval);
+      setSearchInterval(null);
     }
+    
     if (pvp.matchId) {
       try {
         off(ref(db, `matches/${pvp.matchId}`));
         await set(ref(db, `matches/${pvp.matchId}`), null);
       } catch {}
     }
+    
     setPvp({ searching: false, matchId: null, matchData: null, isHost: false, side: null, searchStartTime: undefined });
+    setSearchTimeLeft(50);
     setArenaView("menu");
   };
 
   const leavePvP = async () => {
-    if (searchTimer) {
-      clearInterval(searchTimer);
-      setSearchTimer(null);
+    if (searchInterval) {
+      clearInterval(searchInterval);
+      setSearchInterval(null);
     }
     if (pvp.matchId) {
       try {
@@ -1043,7 +1022,16 @@ const sellItem = (it: Item) => {
     setBattle({ active: false, enemyHp: 0, maxEnemyHp: 0, qs: [], qIdx: 0, timer: 20, combo: 0, log: null, wait: false, dmgText: null, shaking: false });
     setScreen("arena");
     setArenaView("menu");
+    setSearchTimeLeft(50);
     notify("PvP'den ayrıldın");
+  };
+
+  const savePvPAnswer = async (matchId: string, correct: boolean) => {
+    if (!player) return;
+    await set(ref(db, `matches/${matchId}/answers/${player.name}`), {
+      correct,
+      timestamp: Date.now()
+    });
   };
 
   const pvpAnswer = async (selectedIndex: number) => {
@@ -1065,7 +1053,6 @@ const sellItem = (it: Item) => {
     const correct = selectedIndex === q.a;
     const answerTime = Date.now();
     
-    // İlk cevaplayanı belirle
     const updates: any = {
       "state/lastAnswer": {
         player: player.name,
@@ -1076,15 +1063,12 @@ const sellItem = (it: Item) => {
 
     await update(ref(db, `matches/${matchId}`), updates);
 
-    // Rakibin cevabını bekle (2 saniye)
     setTimeout(async () => {
       const currentMatch = await get(ref(db, `matches/${matchId}`));
       const current = currentMatch.val();
       if (!current) return;
 
       const myAnswer = current.state.lastAnswer;
-      
-      // Rakibin cevabını kontrol et (answers node'undan)
       const opponentName = side === "host" ? current.players.guest : current.players.host;
       let opponentAnswer = null;
       
@@ -1095,36 +1079,30 @@ const sellItem = (it: Item) => {
       }
 
       const pStats = getStats(player!);
-      const botDmg = Math.floor(pStats.atk * 0.8); // Bot hasarı
+      const botDmg = Math.floor(pStats.atk * 0.8);
 
       if (!opponentAnswer) {
-        // Rakip cevap vermedi veya bot
         if (opponentName && opponentName.includes("BOT")) {
-          // Bot rastgele cevap ver
           const botCorrect = Math.random() > 0.4;
           if (myAnswer.correct && botCorrect) {
-            // İkisi de doğru - hızlı olan kazansın
             if (side === "host") {
               updates["state/guestHp"] = Math.max(0, current.state.guestHp - pStats.atk);
             } else {
               updates["state/hostHp"] = Math.max(0, current.state.hostHp - pStats.atk);
             }
           } else if (myAnswer.correct && !botCorrect) {
-            // Sadece sen doğru
             if (side === "host") {
               updates["state/guestHp"] = Math.max(0, current.state.guestHp - pStats.atk);
             } else {
               updates["state/hostHp"] = Math.max(0, current.state.hostHp - pStats.atk);
             }
           } else if (!myAnswer.correct && botCorrect) {
-            // Sadece bot doğru
             if (side === "host") {
               updates["state/hostHp"] = Math.max(0, current.state.hostHp - botDmg);
             } else {
               updates["state/guestHp"] = Math.max(0, current.state.guestHp - botDmg);
             }
           } else {
-            // İkisi de yanlış
             updates["state/log"] = "Kimse bilemedi!";
             if (side === "host") {
               updates["state/hostHp"] = Math.max(0, current.state.hostHp - 20);
@@ -1135,7 +1113,6 @@ const sellItem = (it: Item) => {
             }
           }
         } else {
-          // Gerçek rakip cevap vermedi - sen kazandın
           if (side === "host") {
             updates["state/guestHp"] = 0;
           } else {
@@ -1143,9 +1120,7 @@ const sellItem = (it: Item) => {
           }
         }
       } else {
-        // İki cevap da var
         if (myAnswer.correct && opponentAnswer.correct) {
-          // İkisi de doğru, hızlı olan kazansın
           if (myAnswer.timestamp < opponentAnswer.timestamp) {
             if (side === "host") {
               updates["state/guestHp"] = Math.max(0, current.state.guestHp - pStats.atk);
@@ -1160,21 +1135,18 @@ const sellItem = (it: Item) => {
             }
           }
         } else if (myAnswer.correct && !opponentAnswer.correct) {
-          // Sadece sen doğru
           if (side === "host") {
             updates["state/guestHp"] = Math.max(0, current.state.guestHp - pStats.atk);
           } else {
             updates["state/hostHp"] = Math.max(0, current.state.hostHp - pStats.atk);
           }
         } else if (!myAnswer.correct && opponentAnswer.correct) {
-          // Sadece rakip doğru
           if (side === "host") {
             updates["state/hostHp"] = Math.max(0, current.state.hostHp - pStats.atk);
           } else {
             updates["state/guestHp"] = Math.max(0, current.state.guestHp - pStats.atk);
           }
         } else {
-          // İkisi de yanlış
           updates["state/log"] = "Kimse bilemedi!";
           if (side === "host") {
             updates["state/hostHp"] = Math.max(0, current.state.hostHp - 20);
@@ -1186,18 +1158,14 @@ const sellItem = (it: Item) => {
         }
       }
 
-      // Sonraki soruya geç
       updates["state/lastAnswer"] = null;
       updates["state/qIdx"] = (qIdx + 1) % qs.length;
       updates["state/turn"] = data.state.turn === "host" ? "guest" : "host";
       updates["state/turnStartTime"] = Date.now();
 
-      // Cevap kayıtlarını temizle
       await set(ref(db, `matches/${matchId}/answers`), null);
-      
       await update(ref(db, `matches/${matchId}`), updates);
 
-      // Zafer kontrolü
       const updatedMatch = await get(ref(db, `matches/${matchId}`));
       const updated = updatedMatch.val();
       if (updated && updated.state) {
@@ -1218,16 +1186,7 @@ const sellItem = (it: Item) => {
           }, 3000);
         }
       }
-    }, 2000); // Rakibi 2 saniye bekle
-  };
-
-  // PvP cevap kaydetme
-  const savePvPAnswer = async (matchId: string, correct: boolean) => {
-    if (!player) return;
-    await set(ref(db, `matches/${matchId}/answers/${player.name}`), {
-      correct,
-      timestamp: Date.now()
-    });
+    }, 2000);
   };
 
   useEffect(() => {
@@ -1237,7 +1196,6 @@ const sellItem = (it: Item) => {
       if (!m.state.qs) return;
       const isHost = pvp.side === "host";
       const enemyHp = isHost ? m.state.guestHp : m.state.hostHp;
-      const myHp = isHost ? m.state.hostHp : m.state.guestHp;
       
       setBattle({
         active: true,
@@ -1265,16 +1223,14 @@ const sellItem = (it: Item) => {
     }
   }, [pvp.matchData, player]);
 
-  // Sayaç efekti
   useEffect(() => {
     if (!battle.active || !pvp.matchId) return;
     
     const interval = setInterval(() => {
-      if (answerStartTime && turn === "p1") {
+      if (answerStartTime && turn === "p1" && !battle.wait) {
         const elapsed = Math.floor((Date.now() - answerStartTime) / 1000);
         const remaining = 20 - elapsed;
-        if (remaining <= 0 && !battle.wait) {
-          // Süre doldu, cevap verilmemiş gibi işle
+        if (remaining <= 0) {
           notify("Süren doldu! Cevap veremedin!");
           pvpAnswer(-1);
         }
@@ -1284,7 +1240,6 @@ const sellItem = (it: Item) => {
     return () => clearInterval(interval);
   }, [battle.active, pvp.matchId, answerStartTime, turn, battle.wait]);
 
-  // --- STYLES ---
   const globalStyles = `
     @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.04); } 100% { transform: scale(1); } }
     @keyframes float { 0% { transform: translateY(0); opacity:1; } 100% { transform: translateY(-50px); opacity:0; } }
@@ -1294,10 +1249,8 @@ const sellItem = (it: Item) => {
     .floating-dmg { position:absolute; left:50%; transform:translateX(-50%); font-size:72px; font-weight:800; text-shadow:0 0 30px black; animation:float 1s forwards; }
   `;
 
-  // --- RENDERING ---
   if (!mounted) return <div style={{ height: "100vh", background: "#000" }}></div>;
   
-  // LOGIN
   if (screen === "auth")
     return (
       <div style={{ height: "100vh", background: "#000", display: "flex", justifyContent: "center", alignItems: "center", color: "black", fontFamily: "sans-serif" }}>
@@ -1312,40 +1265,28 @@ const sellItem = (it: Item) => {
         </div>
       </div>
     );
-return (
-  <div
-    style={{
-      height: "100vh",
-      background: "radial-gradient(circle at center, #1a1a2e, #000)",
-      color: "white",
-      fontFamily: "Segoe UI, sans-serif",
-      overflow: "hidden",
-      display: "flex",
-      flexDirection: "column",
-    }}
-  >
-      <style>{globalStyles}</style>
 
+  return (
+    <div style={{ height: "100vh", background: "radial-gradient(circle at center, #1a1a2e, #000)", color: "white", fontFamily: "Segoe UI, sans-serif", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+      <style>{globalStyles}</style>
       <canvas ref={confettiRef} style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 9999 }} />
      
-     
-      {/* TOP BAR */}
       {screen !== "battle" && screen !== "arena" && (
-      <div style={{ ...S.glass, margin: "15px", padding: "15px 25px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ display: "flex", gap: "18px", fontSize: "18px", fontWeight: "700", alignItems: "center" }}>
-          <span style={{ fontSize: "24px" }}>{COSTUMES[player!.currentCostume].i}</span>
-          <span style={S.neon("#fc0")}>⚡ {player?.lvl}</span>
-          <span style={S.neon("#0f6")}>❤️ {player?.hp}</span>
-          <span style={S.neon("#00eaff")}>💰 {player?.gold}</span>
+        <div style={{ ...S.glass, margin: "15px", padding: "15px 25px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ display: "flex", gap: "18px", fontSize: "18px", fontWeight: "700", alignItems: "center" }}>
+            <span style={{ fontSize: "24px" }}>{COSTUMES[player!.currentCostume].i}</span>
+            <span style={S.neon("#fc0")}>⚡ {player?.lvl}</span>
+            <span style={S.neon("#0f6")}>❤️ {player?.hp}</span>
+            <span style={S.neon("#00eaff")}>💰 {player?.gold}</span>
+          </div>
+          <div style={{ display: "flex", gap: 12 }}>
+            <button style={{ ...S.btn, ...S.btnDanger, padding: "10px 18px", fontSize: 14 }} onClick={() => setScreen("auth")}>ÇIKIŞ</button>
+          </div>
         </div>
-        <div style={{ display: "flex", gap: 12 }}>
-          <button style={{ ...S.btn, ...S.btnDanger, padding: "10px 18px", fontSize: 14 }} onClick={() => setScreen("auth")}>ÇIKIŞ</button>
-        </div>
-      </div>
-    )}
+      )}
+      
       {notif && <div style={{ position: "absolute", top: 80, left: "50%", transform: "translateX(-50%)", background: "#0f6", padding: "12px 22px", borderRadius: "12px", color: "#000", zIndex: 999, fontWeight: "700", boxShadow: "0 0 20px #0f6" }}>{notif}</div>}
 
-      {/* MENU */}
       {screen === "menu" && (
         <div style={{ flex: 1, display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: "28px", padding: "20px" }}>
           <div style={{ ...S.glass, padding: "36px", textAlign: "center", width: "380px", height: "500px", display: "flex", flexDirection: "column", justifyContent: "center" }}>
@@ -1359,12 +1300,7 @@ return (
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", width: "620px" }}>
             {[{ id: "map", t: "MACERA", i: "🗺️", c: "#fc0" }, { id: "arena", t: "ARENA", i: "⚔️", c: "#f05" }, { id: "shop", t: "MARKET", i: "🛒", c: "#0f6" }, { id: "inv", t: "ÇANTA", i: "🎒", c: "#00eaff" }].map((m) => (
-              <div key={m.id} onClick={() => {
-                playSound("click");
-                if (m.id === "arena") {
-                  handleArenaClick();
-                } else setScreen(m.id as any);
-              }} style={{ ...S.glass, height: "210px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: "pointer", border: `1px solid ${m.c}`, background: "rgba(20,20,30,0.84)" }}>
+              <div key={m.id} onClick={() => { playSound("click"); if (m.id === "arena") { handleArenaClick(); } else setScreen(m.id as any); }} style={{ ...S.glass, height: "210px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: "pointer", border: `1px solid ${m.c}`, background: "rgba(20,20,30,0.84)" }}>
                 <div style={{ fontSize: "64px", marginBottom: "14px" }}>{m.i}</div>
                 <div style={{ ...S.neon(m.c), fontSize: "20px", fontWeight: "800" }}>{m.t}</div>
               </div>
@@ -1373,26 +1309,17 @@ return (
         </div>
       )}
 
-      {/* ARENA MENU */}
       {screen === "arena" && arenaView === "menu" && (
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <div style={{ ...S.glass, padding: "40px", width: "500px", textAlign: "center" }}>
             <h1 style={{ ...S.neon("#f05"), fontSize: "36px", marginBottom: "30px" }}>⚔️ ARENA ⚔️</h1>
             
-            {/* LEADERBOARD - SIRALAMA */}
             <div style={{ marginBottom: "30px", background: "rgba(0,0,0,0.3)", borderRadius: "10px", padding: "15px" }}>
               <h2 style={{ ...S.neon("#fc0"), marginBottom: "15px" }}>🏆 SIRALAMA</h2>
               {leaderboard.length > 0 ? (
                 <div style={{ maxHeight: "200px", overflowY: "auto" }}>
                   {leaderboard.map((user, index) => (
-                    <div key={user.name} style={{ 
-                      display: "flex", 
-                      justifyContent: "space-between", 
-                      padding: "8px 12px", 
-                      marginBottom: "5px",
-                      background: index < 3 ? "rgba(255,215,0,0.1)" : "rgba(255,255,255,0.05)",
-                      borderRadius: "5px"
-                    }}>
+                    <div key={user.name} style={{ display: "flex", justifyContent: "space-between", padding: "8px 12px", marginBottom: "5px", background: index < 3 ? "rgba(255,215,0,0.1)" : "rgba(255,255,255,0.05)", borderRadius: "5px" }}>
                       <span>{index + 1}. {user.name} {index === 0 && "👑"}</span>
                       <span style={{ color: "#fc0" }}>{user.score} Puan</span>
                     </div>
@@ -1408,36 +1335,13 @@ return (
               <p>⚡ Gerçek oyunculara karşı savaş</p>
               <p>🤖 50 sn'de rakip bulunmazsa bot ile eşleş</p>
             </div>
-            <button 
-              style={{ ...S.btn, ...S.btnDanger, width: "100%", padding: "18px", fontSize: "20px", marginBottom: "15px" }}
-              onClick={() => {
-                setArenaView("search");
-                findAndJoinMatch();
-              }}
-            >
-              🎮 EŞLEŞTİRME BUL
-            </button>
-            <button 
-              style={{ ...S.btn, width: "100%", padding: "12px" }}
-              onClick={() => {
-                const np = { ...player!, arenaRulesSeen: true };
-                save(np);
-                setArenaView("rules");
-              }}
-            >
-              📜 KURALLAR
-            </button>
-            <button 
-              style={{ ...S.btn, ...S.btnSuccess, width: "100%", padding: "12px", marginTop: "15px" }}
-              onClick={() => setScreen("menu")}
-            >
-              GERİ
-            </button>
+            <button style={{ ...S.btn, ...S.btnDanger, width: "100%", padding: "18px", fontSize: "20px", marginBottom: "15px" }} onClick={() => { setArenaView("search"); findAndJoinMatch(); }}>🎮 EŞLEŞTİRME BUL</button>
+            <button style={{ ...S.btn, width: "100%", padding: "12px" }} onClick={() => { const np = { ...player!, arenaRulesSeen: true }; save(np); setArenaView("rules"); }}>📜 KURALLAR</button>
+            <button style={{ ...S.btn, ...S.btnSuccess, width: "100%", padding: "12px", marginTop: "15px" }} onClick={() => setScreen("menu")}>GERİ</button>
           </div>
         </div>
       )}
 
-      {/* ARENA RULES */}
       {screen === "arena" && arenaView === "rules" && (
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <div style={{ ...S.glass, padding: "40px", width: "600px", maxHeight: "80vh", overflowY: "auto" }}>
@@ -1466,50 +1370,31 @@ return (
               <p>• Bot rastgele cevaplar verir (%60 doğruluk)</p>
             </div>
 
-            <button 
-              style={{ ...S.btn, ...S.btnSuccess, width: "100%", padding: "15px", fontSize: "18px" }}
-              onClick={() => {
-                const np = { ...player!, arenaRulesSeen: true };
-                save(np);
-                setArenaView("menu");
-              }}
-            >
-              ANLAŞILDI, ARENA'YA DÖN
-            </button>
+            <button style={{ ...S.btn, ...S.btnSuccess, width: "100%", padding: "15px", fontSize: "18px" }} onClick={() => { const np = { ...player!, arenaRulesSeen: true }; save(np); setArenaView("menu"); }}>ANLAŞILDI, ARENA'YA DÖN</button>
           </div>
         </div>
       )}
 
-      {/* ARENA SEARCH */}
       {screen === "arena" && arenaView === "search" && (
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <div style={{ ...S.glass, padding: "40px", width: "450px", textAlign: "center" }}>
             <div style={{ fontSize: "64px", marginBottom: "20px", animation: "pulse 1s infinite" }}>🔍</div>
             <h2 style={{ ...S.neon("#f05"), fontSize: "28px", marginBottom: "15px" }}>RAKİP ARANIYOR</h2>
-            <div style={{ fontSize: "48px", fontWeight: "800", marginBottom: "20px", color: "#00eaff" }}>
-              {getSearchTimeLeft()}s
-            </div>
+            <div style={{ fontSize: "48px", fontWeight: "800", marginBottom: "20px", color: "#00eaff" }}>{searchTimeLeft}s</div>
             <div style={{ color: "#aaa", marginBottom: "30px" }}>
               <p>🏆 Aktif oyuncu aranıyor...</p>
-              <p>⏳ {getSearchTimeLeft()} saniye sonra bot ile eşleşeceksin</p>
+              <p>⏳ {searchTimeLeft} saniye sonra bot ile eşleşeceksin</p>
             </div>
-            <button 
-              style={{ ...S.btn, ...S.btnDanger, width: "100%", padding: "15px" }}
-              onClick={cancelSearch}
-            >
-              ❌ EŞLEŞTİRMEYİ İPTAL ET
-            </button>
+            <button style={{ ...S.btn, ...S.btnDanger, width: "100%", padding: "15px" }} onClick={cancelSearch}>❌ EŞLEŞTİRMEYİ İPTAL ET</button>
           </div>
         </div>
       )}
 
-      {/* BATTLE ekran (single, bot veya pvp mapped) */}
       {screen === "battle" && (
         <div style={{ flex: 1, display: "flex", flexDirection: "column", background: `linear-gradient(rgba(0,0,0,0.6),rgba(0,0,0,0.9)), url(${battle.region?.bg || ""}) center/cover` }}>
           <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "space-around", position: "relative" }}>
             {battle.dmgText && <div className="floating-dmg" style={{ top: "38%", color: battle.dmgText.c }}>{battle.dmgText.val}</div>}
 
-            {/* RAKİP */}
             <div style={{ textAlign: "center", transform: battle.shaking ? "translateX(5px)" : "" }}>
               <div style={{ fontSize: "120px", filter: "drop-shadow(0 0 30px #f05)" }}>{battle.level?.ico}</div>
               <div style={{ ...S.glass, padding: "10px 20px", marginTop: "10px", display: "inline-block" }}>
@@ -1518,7 +1403,6 @@ return (
               </div>
             </div>
 
-            {/* ORTA */}
             <div style={{ textAlign: "center" }}>
               <div style={{ marginBottom: "16px", fontSize: "22px", fontWeight: "700", color: "#fc0" }}>{battle.log}</div>
               {botMatch && turn !== "p1" ? (
@@ -1542,7 +1426,6 @@ return (
               )}
             </div>
 
-            {/* OYUNCU */}
             <div style={{ textAlign: "center" }}>
               <div style={{ fontSize: "120px", filter: "drop-shadow(0 0 30px #00eaff)" }}>{COSTUMES[player!.currentCostume].i}</div>
               <div style={{ ...S.glass, padding: "10px 20px", marginTop: "10px", display: "inline-block" }}>
@@ -1552,47 +1435,21 @@ return (
             </div>
           </div>
 
-          {/* Soru alanı */}
           <div style={{ ...S.glass, margin: "22px", padding: "22px", border: "1px solid #00eaff", minHeight: "260px", display: "flex", flexDirection: "column", justifyContent: "center" }}>
             {pvp.matchId && pvp.matchData && pvp.matchData.state && pvp.matchData.state.started && pvp.side ? (
               <>
-                <div style={{ textAlign: "center", marginBottom: "18px", fontSize: "22px", fontWeight: "800" }}>
-                  {pvp.matchData.state.qs[pvp.matchData.state.qIdx].q}
-                </div>
+                <div style={{ textAlign: "center", marginBottom: "18px", fontSize: "22px", fontWeight: "800" }}>{pvp.matchData.state.qs[pvp.matchData.state.qIdx].q}</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
                   {pvp.matchData.state.qs[pvp.matchData.state.qIdx].o.map((o: string, i: number) => {
                     const isDisabled = turn !== "p1" || pvp.matchData?.state?.lastAnswer !== null;
                     return (
-                      <button 
-                        key={i} 
-                        className="answer-btn" 
-                        style={{ 
-                          ...S.btn, 
-                          padding: "14px", 
-                          fontSize: 15, 
-                          width: "100%", 
-                          textTransform: "none",
-                          opacity: isDisabled ? 0.5 : 1,
-                          cursor: isDisabled ? "not-allowed" : "pointer"
-                        }} 
-                        onClick={() => {
-                          if (!isDisabled) {
-                            savePvPAnswer(pvp.matchId!, i === pvp.matchData!.state.qs[pvp.matchData!.state.qIdx].a);
-                            pvpAnswer(i);
-                          }
-                        }}
-                        disabled={isDisabled}
-                      >
-                        {o}
-                      </button>
+                      <button key={i} className="answer-btn" style={{ ...S.btn, padding: "14px", fontSize: 15, width: "100%", textTransform: "none", opacity: isDisabled ? 0.5 : 1, cursor: isDisabled ? "not-allowed" : "pointer" }} onClick={() => { if (!isDisabled) { savePvPAnswer(pvp.matchId!, i === pvp.matchData!.state.qs[pvp.matchData!.state.qIdx].a); pvpAnswer(i); } }} disabled={isDisabled}>{o}</button>
                     );
                   })}
                 </div>
                 {pvp.matchData.state.lastAnswer && (
                   <div style={{ textAlign: "center", marginTop: "15px", color: "#fc0" }}>
-                    {pvp.matchData.state.lastAnswer.player === player?.name 
-                      ? "Cevabınız kaydedildi, rakip bekleniyor..." 
-                      : "Rakip cevapladı, sıranızı bekleyin..."}
+                    {pvp.matchData.state.lastAnswer.player === player?.name ? "Cevabınız kaydedildi, rakip bekleniyor..." : "Rakip cevapladı, sıranızı bekleyin..."}
                   </div>
                 )}
                 <div style={{ display: "flex", justifyContent: "center", gap: "12px", marginTop: "18px" }}>
@@ -1613,21 +1470,11 @@ return (
                   })}
                 </div>
                 <div style={{ display: "flex", justifyContent: "center", gap: "12px", marginTop: "18px", flexWrap: "wrap" }}>
-                 {Object.keys(player!.jokers).map((k) => (
-                  <button
-                    key={k}
-                    style={{
-                      ...S.btn,
-                      background: "#444",
-                      fontSize: "13px",
-                      opacity: player!.jokers[k] === 0 ? 0.5 : 1,
-                    }}
-                    onClick={() => useJoker(k as "heal" | "5050" | "skip")}
-                    disabled={player!.jokers[k] === 0}
-                  >
-                    {k === "heal" ? "❤️" : k === "skip" ? "⏩" : "½"} ({player!.jokers[k]})
-                  </button>
-                ))}
+                  {Object.keys(player!.jokers).map((k) => (
+                    <button key={k} style={{ ...S.btn, background: "#444", fontSize: "13px", opacity: player!.jokers[k] === 0 ? 0.5 : 1, }} onClick={() => useJoker(k as "heal" | "5050" | "skip")} disabled={player!.jokers[k] === 0}>
+                      {k === "heal" ? "❤️" : k === "skip" ? "⏩" : "½"} ({player!.jokers[k]})
+                    </button>
+                  ))}
                   <button style={{ ...S.btn, ...S.btnDanger }} onClick={() => { setScreen("menu"); setBattle({ active: false, enemyHp: 0, maxEnemyHp: 0, qs: [], qIdx: 0, timer: 20, combo: 0, log: null, wait: false, dmgText: null, shaking: false }); }}>PES ET</button>
                 </div>
               </>
@@ -1635,245 +1482,93 @@ return (
           </div>
         </div>
       )}
-  {/* HARİTA */}
-{screen === "map" && (
-  <div
-    style={{
-      flex: 1,
-      position: "relative",
-      backgroundColor: "#000",
-      backgroundImage: "url('https://witchculttranslation.com/WM-K-Thumb.png')",
-      backgroundSize: "cover",
-      backgroundPosition: "center",
-      backgroundRepeat: "no-repeat",
-      overflow: "hidden",
-    }}
-  >
-    <div
-      style={{
-        position: "absolute",
-        inset: 0,
-        background: "rgba(0,0,0,0.45)",
-        zIndex: 0,
-      }}
-    />
 
-    <button
-      style={{
-        ...S.btn,
-        ...S.btnDanger,
-        position: "absolute",
-        top: 20,
-        right: 20,
-        zIndex: 10,
-      }}
-      onClick={() => setScreen("menu")}
-    >
-      GERİ
-    </button>
-
-    {REGIONS.map((r) => {
-      const unlocked = player!.unlockedRegions.includes(r.id);
-
-      return (
-        <div
-          key={r.id}
-          onClick={() => {
-            if (unlocked) {
-              setModal(r);
-              playSound("click");
-            } else {
-              notify("Önceki Bölümü Bitir!");
-            }
-          }}
-          style={{
-            position: "absolute",
-            left: `${r.x}%`,
-            top: `${r.y}%`,
-            transform: "translate(-50%,-50%)",
-            cursor: unlocked ? "pointer" : "not-allowed",
-            textAlign: "center",
-            opacity: unlocked ? 1 : 0.35,
-            filter: unlocked
-              ? "drop-shadow(0 0 20px #00eaff)"
-              : "grayscale(100%)",
-            zIndex: 5,
-          }}
-        >
-          <div
-            style={{
-              fontSize: "70px",
-              animation: unlocked ? "pulse 2s infinite" : "",
-            }}
-          >
-            {unlocked
-              ? r.type === "iletisim"
-                ? "📡"
-                : r.type === "hikaye"
-                ? "🌲"
-                : r.type === "siir"
-                ? "🎭"
-                : r.id === "tut"
-                ? "🎓"
-                : "🐲"
-              : "🔒"}
-          </div>
-
-          <div style={{ ...S.glass, padding: "6px 16px", fontSize: "14px" }}>
-            {r.name}
-          </div>
-        </div>
-      );
-    })}
-  </div>
-)}
-     {/* MARKET / INV */}
-{(screen === "shop" || screen === "inv") && (
-  <div style={{ flex: 1, padding: "22px", overflowY: "auto" }}>
-
-    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "26px", alignItems: "center" }}>
-      <h1 style={S.neon("#00eaff")}>{screen === "shop" ? "MARKET" : "ÇANTA"}</h1>
-
-      <button style={{ ...S.btn, ...S.btnDanger }} onClick={() => setScreen("menu")}>
-        GERİ
-      </button>
-    </div>
-
-    {screen === "inv" && (
-      <div style={{ ...S.glass, padding: "18px", marginBottom: "20px" }}>
-        <h2 style={S.neon("#fc0")}>🎽 KUŞANILANLAR</h2>
-
-        <div style={{ display: "flex", gap: "14px", marginTop: "14px", flexWrap: "wrap" }}>
-          
-          <div style={{ ...S.glass, padding: "14px", width: "200px", textAlign: "center" }}>
-            <div style={{ fontWeight: "800", marginBottom: "8px" }}>⚔️ Silah</div>
-
-            {player?.equipped?.wep ? (
-              <>
-                <div style={{ fontSize: "40px" }}>{player.equipped.wep.icon}</div>
-                <div>{player.equipped.wep.name}</div>
-
-                <button
-                  style={{ ...S.btn, marginTop: "10px", width: "100%", background: "#f05" }}
-                  onClick={() => {
-                    const np = { ...player };
-                    np.inventory.push(np.equipped.wep!);
-                    np.equipped.wep = null;
-                    save(np);
-                    notify("Silah çıkarıldı!");
-                  }}
-                >
-                  ÇIKAR
-                </button>
-              </>
-            ) : (
-              <div style={{ color: "#aaa" }}>Boş</div>
-            )}
-          </div>
-
-          <div style={{ ...S.glass, padding: "14px", width: "200px", textAlign: "center" }}>
-            <div style={{ fontWeight: "800", marginBottom: "8px" }}>🛡️ Zırh</div>
-
-            {player?.equipped?.arm ? (
-              <>
-                <div style={{ fontSize: "40px" }}>{player.equipped.arm.icon}</div>
-                <div>{player.equipped.arm.name}</div>
-
-                <button
-                  style={{ ...S.btn, marginTop: "10px", width: "100%", background: "#f05" }}
-                  onClick={() => {
-                    const np = { ...player };
-                    np.inventory.push(np.equipped.arm!);
-                    np.equipped.arm = null;
-                    save(np);
-                    notify("Zırh çıkarıldı!");
-                  }}
-                >
-                  ÇIKAR
-                </button>
-              </>
-            ) : (
-              <div style={{ color: "#aaa" }}>Boş</div>
-            )}
-          </div>
-
-        </div>
-      </div>
-    )}
-
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: "18px" }}>
-      {screen === "shop" ? (
-        <>
-          {Object.values(ITEMS)
-            .filter((it) => it.type !== "joker")
-            .map((it) => (
-              <div key={it.id} style={{ ...S.glass, padding: "18px", textAlign: "center" }}>
-                <div style={{ fontSize: "46px", marginBottom: "8px" }}>{it.icon}</div>
-                <div style={{ fontWeight: "800", fontSize: "16px" }}>{it.name}</div>
-                <div style={{ color: "#fc0", margin: "8px 0" }}>{it.cost} G</div>
-
-                <button
-                  style={{ ...S.btn, ...S.btnSuccess, width: "100%" }}
-                  onClick={() => buyItem(it)}
-                >
-                  SATIN AL
-                </button>
+      {screen === "map" && (
+        <div style={{ flex: 1, position: "relative", backgroundColor: "#000", backgroundImage: "url('https://witchculttranslation.com/WM-K-Thumb.png')", backgroundSize: "cover", backgroundPosition: "center", backgroundRepeat: "no-repeat", overflow: "hidden" }}>
+          <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 0 }} />
+          <button style={{ ...S.btn, ...S.btnDanger, position: "absolute", top: 20, right: 20, zIndex: 10 }} onClick={() => setScreen("menu")}>GERİ</button>
+          {REGIONS.map((r) => {
+            const unlocked = player!.unlockedRegions.includes(r.id);
+            return (
+              <div key={r.id} onClick={() => { if (unlocked) { setModal(r); playSound("click"); } else { notify("Önceki Bölümü Bitir!"); } }} style={{ position: "absolute", left: `${r.x}%`, top: `${r.y}%`, transform: "translate(-50%,-50%)", cursor: unlocked ? "pointer" : "not-allowed", textAlign: "center", opacity: unlocked ? 1 : 0.35, filter: unlocked ? "drop-shadow(0 0 20px #00eaff)" : "grayscale(100%)", zIndex: 5 }}>
+                <div style={{ fontSize: "70px", animation: unlocked ? "pulse 2s infinite" : "" }}>{unlocked ? (r.type === "iletisim" ? "📡" : r.type === "hikaye" ? "🌲" : r.type === "siir" ? "🎭" : r.id === "tut" ? "🎓" : "🐲") : "🔒"}</div>
+                <div style={{ ...S.glass, padding: "6px 16px", fontSize: "14px" }}>{r.name}</div>
               </div>
-            ))}
-
-          <div style={{ gridColumn: "1 / -1", marginTop: "30px" }}>
-            <h2 style={S.neon("#fc0")}>🎴 JOKERLER</h2>
-          </div>
-
-          {Object.values(ITEMS)
-            .filter((it) => it.type === "joker")
-            .map((it) => (
-              <div key={it.id} style={{ ...S.glass, padding: "18px", textAlign: "center" }}>
-                <div style={{ fontSize: "46px", marginBottom: "8px" }}>{it.icon}</div>
-                <div style={{ fontWeight: "800", fontSize: "16px" }}>{it.name}</div>
-                <div style={{ color: "#fc0", margin: "8px 0" }}>{it.cost} G</div>
-
-                <button
-                  style={{ ...S.btn, ...S.btnSuccess, width: "100%" }}
-                  onClick={() => buyItem(it)}
-                >
-                  SATIN AL
-                </button>
-              </div>
-            ))}
-        </>
-      ) : (
-        <>
-          {player!.inventory.map((it, i) => (
-            <div key={i} style={{ ...S.glass, padding: "16px", textAlign: "center" }}>
-              <div style={{ fontSize: "40px" }}>{it.icon}</div>
-              <div style={{ fontWeight: 700 }}>{it.name}</div>
-
-              {it.type !== "joker" && (
-                <button
-                  style={{ ...S.btn, marginTop: "10px", width: "100%" }}
-                  onClick={() => equipItem(it)}
-                >
-                  KUŞAN
-                </button>
-              )}
-
-              <button
-                style={{ ...S.btn, marginTop: "8px", width: "100%", background: "#fc0", color: "black" }}
-                onClick={() => sellItem(it)}
-
-              >
-                SAT
-              </button>
-            </div>
-          ))}
-        </>
+            );
+          })}
+        </div>
       )}
-    </div>
 
-  </div>
-)}
-      {/* MODALS */}
+      {(screen === "shop" || screen === "inv") && (
+        <div style={{ flex: 1, padding: "22px", overflowY: "auto" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "26px", alignItems: "center" }}>
+            <h1 style={S.neon("#00eaff")}>{screen === "shop" ? "MARKET" : "ÇANTA"}</h1>
+            <button style={{ ...S.btn, ...S.btnDanger }} onClick={() => setScreen("menu")}>GERİ</button>
+          </div>
+
+          {screen === "inv" && (
+            <div style={{ ...S.glass, padding: "18px", marginBottom: "20px" }}>
+              <h2 style={S.neon("#fc0")}>🎽 KUŞANILANLAR</h2>
+              <div style={{ display: "flex", gap: "14px", marginTop: "14px", flexWrap: "wrap" }}>
+                <div style={{ ...S.glass, padding: "14px", width: "200px", textAlign: "center" }}>
+                  <div style={{ fontWeight: "800", marginBottom: "8px" }}>⚔️ Silah</div>
+                  {player?.equipped?.wep ? (
+                    <>
+                      <div style={{ fontSize: "40px" }}>{player.equipped.wep.icon}</div>
+                      <div>{player.equipped.wep.name}</div>
+                      <button style={{ ...S.btn, marginTop: "10px", width: "100%", background: "#f05" }} onClick={() => { const np = { ...player }; np.inventory.push(np.equipped.wep!); np.equipped.wep = null; save(np); notify("Silah çıkarıldı!"); }}>ÇIKAR</button>
+                    </>
+                  ) : (<div style={{ color: "#aaa" }}>Boş</div>)}
+                </div>
+                <div style={{ ...S.glass, padding: "14px", width: "200px", textAlign: "center" }}>
+                  <div style={{ fontWeight: "800", marginBottom: "8px" }}>🛡️ Zırh</div>
+                  {player?.equipped?.arm ? (
+                    <>
+                      <div style={{ fontSize: "40px" }}>{player.equipped.arm.icon}</div>
+                      <div>{player.equipped.arm.name}</div>
+                      <button style={{ ...S.btn, marginTop: "10px", width: "100%", background: "#f05" }} onClick={() => { const np = { ...player }; np.inventory.push(np.equipped.arm!); np.equipped.arm = null; save(np); notify("Zırh çıkarıldı!"); }}>ÇIKAR</button>
+                    </>
+                  ) : (<div style={{ color: "#aaa" }}>Boş</div>)}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: "18px" }}>
+            {screen === "shop" ? (
+              <>
+                {Object.values(ITEMS).filter((it) => it.type !== "joker").map((it) => (
+                  <div key={it.id} style={{ ...S.glass, padding: "18px", textAlign: "center" }}>
+                    <div style={{ fontSize: "46px", marginBottom: "8px" }}>{it.icon}</div>
+                    <div style={{ fontWeight: "800", fontSize: "16px" }}>{it.name}</div>
+                    <div style={{ color: "#fc0", margin: "8px 0" }}>{it.cost} G</div>
+                    <button style={{ ...S.btn, ...S.btnSuccess, width: "100%" }} onClick={() => buyItem(it)}>SATIN AL</button>
+                  </div>
+                ))}
+                <div style={{ gridColumn: "1 / -1", marginTop: "30px" }}><h2 style={S.neon("#fc0")}>🎴 JOKERLER</h2></div>
+                {Object.values(ITEMS).filter((it) => it.type === "joker").map((it) => (
+                  <div key={it.id} style={{ ...S.glass, padding: "18px", textAlign: "center" }}>
+                    <div style={{ fontSize: "46px", marginBottom: "8px" }}>{it.icon}</div>
+                    <div style={{ fontWeight: "800", fontSize: "16px" }}>{it.name}</div>
+                    <div style={{ color: "#fc0", margin: "8px 0" }}>{it.cost} G</div>
+                    <button style={{ ...S.btn, ...S.btnSuccess, width: "100%" }} onClick={() => buyItem(it)}>SATIN AL</button>
+                  </div>
+                ))}
+              </>
+            ) : (
+              player!.inventory.map((it, i) => (
+                <div key={i} style={{ ...S.glass, padding: "16px", textAlign: "center" }}>
+                  <div style={{ fontSize: "40px" }}>{it.icon}</div>
+                  <div style={{ fontWeight: 700 }}>{it.name}</div>
+                  {it.type !== "joker" && <button style={{ ...S.btn, marginTop: "10px", width: "100%" }} onClick={() => equipItem(it)}>KUŞAN</button>}
+                  <button style={{ ...S.btn, marginTop: "8px", width: "100%", background: "#fc0", color: "black" }} onClick={() => sellItem(it)}>SAT</button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
       {modal && modal !== "wardrobe" && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.9)", zIndex: 100, display: "flex", justifyContent: "center", alignItems: "center" }}>
           <div style={{ ...S.glass, padding: "36px", width: "640px", textAlign: "center", border: "2px solid #00eaff" }}>
@@ -1885,13 +1580,9 @@ return (
                     <div style={{ fontWeight: "800", fontSize: "17px" }}>{l.t}</div>
                     <div style={{ fontSize: "12px", color: "#aaa" }}>{l.diff} - {l.hp} HP</div>
                   </div>
-                                      {(player!.regionProgress?.[modal.id] ?? 0) >= i ? (
-                  <button style={S.btn} onClick={() => startBattle(modal, l)}>
-                    SAVAŞ
-                  </button>
-                ) : (
-                  <span>🔒</span>
-                )}
+                  {(player!.regionProgress?.[modal.id] ?? 0) >= i ? (
+                    <button style={S.btn} onClick={() => startBattle(modal, l)}>SAVAŞ</button>
+                  ) : (<span>🔒</span>)}
                 </div>
               ))}
             </div>
@@ -1917,7 +1608,6 @@ return (
           </div>
         </div>
       )}
-
     </div>
   );
 }
