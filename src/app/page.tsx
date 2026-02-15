@@ -98,6 +98,31 @@ type BattleState = {
 
 type ModalState = Region | "wardrobe" | null;
 
+type PvPState = {
+  matchId: string | null;
+  matchData: {
+    id: string;
+    players: { host: string; guest: string | null };
+    state: {
+      hostHp: number;
+      guestHp: number;
+      turn: "host" | "guest";
+      qIdx: number;
+      qs: Q[];
+      started: boolean;
+      lastAnswer?: {
+        player: string;
+        correct: boolean;
+        timestamp: number;
+      } | null;
+      turnStartTime?: number;
+      log?: string | null;
+    };
+    createdAt: number;
+  } | null;
+  side: "host" | "guest" | null;
+};
+
 type Q = { q: string; o: string[]; a: number; topic: string };
 
 // --- İÇERİK ---
@@ -254,6 +279,10 @@ export default function Game() {
   const [arenaView, setArenaView] = useState<"menu" | "rules" | "search">("menu");
   const [searchTimeLeft, setSearchTimeLeft] = useState<number>(50);
   const [isSearching, setIsSearching] = useState<boolean>(false);
+  const [leaderboard, setLeaderboard] = useState<Array<{name: string, score: number, lvl: number}>>([]);
+
+  // PvP state
+  const [pvp, setPvp] = useState<PvPState>({ matchId: null, matchData: null, side: null });
 
   // Confetti canvas ref
   const confettiRef = useRef<HTMLCanvasElement | null>(null);
@@ -301,21 +330,62 @@ export default function Game() {
       } catch (e) {}
     }
     
+    // Firebase'e kaydet (leaderboard için)
+    update(ref(db, "users/" + p.name), { 
+      score: p.score, 
+      lvl: p.lvl,
+      name: p.name 
+    }).catch((e) => console.error("Firebase kayıt hatası:", e));
+    
     setPlayer({ ...p });
+    loadLeaderboard();
+  };
+
+  // Leaderboard yükle
+  const loadLeaderboard = async () => {
+    try {
+      const usersRef = ref(db, "users");
+      const snapshot = await get(usersRef);
+      if (snapshot.exists()) {
+        const users = snapshot.val();
+        const leaderboardData = Object.keys(users)
+          .map(key => ({
+            name: key,
+            score: users[key].score || 0,
+            lvl: users[key].lvl || 1
+          }))
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 10);
+        setLeaderboard(leaderboardData);
+      }
+    } catch (e) {
+      console.error("Leaderboard yüklenemedi:", e);
+    }
   };
 
   useEffect(() => {
     setMounted(true);
+    loadLeaderboard();
+    
+    return () => {
+      if (pvp.matchId) {
+        try {
+          off(ref(db, `matches/${pvp.matchId}`));
+        } catch {}
+      }
+    };
   }, []);
 
-  // BASİT 50 SANİYE SAYACI - SADECE BUTONA TIKLAYINCA ÇALIŞIR
+  // 50 SANİYE SAYACI VE EŞLEŞME KONTROLÜ
   useEffect(() => {
     let timer: NodeJS.Timeout | null = null;
+    let matchCheckInterval: NodeJS.Timeout | null = null;
     
     if (isSearching) {
       console.log("⏱️ Sayaç başladı! 50 saniye sayılıyor...");
       setSearchTimeLeft(50);
       
+      // Her saniye sayacı güncelle
       timer = setInterval(() => {
         setSearchTimeLeft(prev => {
           const newValue = prev - 1;
@@ -324,19 +394,64 @@ export default function Game() {
           if (newValue <= 0) {
             console.log("🔥 50 SANİYE DOLDU! Bot ile eşleşiliyor...");
             if (timer) clearInterval(timer);
+            if (matchCheckInterval) clearInterval(matchCheckInterval);
             setIsSearching(false);
-            startBotArenaMatch();
+            
+            // Eğer hala eşleşmemişse bot ile başlat
+            if (!pvp.matchId) {
+              startBotArenaMatch();
+            }
             return 0;
           }
           return newValue;
         });
       }, 1000);
+      
+      // Her 3 saniyede bir açık maçları kontrol et
+      matchCheckInterval = setInterval(async () => {
+        if (!player || pvp.matchId) return;
+        
+        try {
+          const snap = await get(ref(db, "matches"));
+          const matchesObj = snap.val() || {};
+          
+          // Açık maç ara (guest'i olmayan)
+          for (const k of Object.keys(matchesObj)) {
+            const m = matchesObj[k];
+            if (m && m.players && !m.players.guest && m.players.host !== player.name) {
+              console.log("🎮 Aday maç bulundu! Katılınıyor...");
+              
+              // Maça katıl
+              await update(ref(db, `matches/${k}/players`), { guest: player.name });
+              
+              // Timer'ları durdur
+              if (timer) clearInterval(timer);
+              if (matchCheckInterval) clearInterval(matchCheckInterval);
+              
+              setIsSearching(false);
+              
+              // Maçı dinlemeye başla
+              onValue(ref(db, `matches/${k}`), (snap2) => {
+                const val = snap2.val();
+                setPvp(prev => ({ ...prev, matchData: val }));
+              });
+              
+              setPvp({ matchId: k, matchData: null, side: "guest" });
+              notify("🎮 Rakip bulundu! Maç başlıyor...");
+              break;
+            }
+          }
+        } catch (error) {
+          console.error("Eşleştirme hatası:", error);
+        }
+      }, 3000);
     }
     
     return () => {
       if (timer) clearInterval(timer);
+      if (matchCheckInterval) clearInterval(matchCheckInterval);
     };
-  }, [isSearching]);
+  }, [isSearching, player, pvp.matchId]);
 
   // ARENA'YA TIKLAYINCA
   const handleArenaClick = () => {
@@ -357,18 +472,88 @@ export default function Game() {
   };
 
   // EŞLEŞTİRME BUL BUTONU
-  const handleFindMatch = () => {
+  const handleFindMatch = async () => {
     console.log("🎮 Eşleştirme bul butonuna tıklandı!");
+    
+    if (!player) return;
+    
+    // Önce kendi maçını oluştur
+    const pool = QUESTIONS.slice();
+    const qs = shuffle(pool).slice(0, 30);
+    const newRef = push(ref(db, "matches"));
+    const matchId = newRef.key!;
+    
+    const initialState = {
+      id: matchId,
+      players: { host: player.name, guest: null },
+      state: {
+        hostHp: getStats(player).maxHp,
+        guestHp: 0,
+        turn: "host" as const,
+        qIdx: 0,
+        qs,
+        started: false,
+        lastAnswer: null,
+        turnStartTime: Date.now(),
+        log: null,
+      },
+      createdAt: Date.now(),
+    };
+    
+    await set(newRef, initialState);
+    
+    // Kendi maçını dinle
+    onValue(ref(db, `matches/${matchId}`), (snap) => {
+      const val = snap.val();
+      setPvp(prev => ({ ...prev, matchData: val }));
+      
+      // Guest katıldıysa maçı başlat
+      if (val && val.players && val.players.guest && val.state && !val.state.started) {
+        const guestHp = getStats(player).maxHp;
+        update(ref(db, `matches/${matchId}/state`), { guestHp, started: true });
+        notify("🎮 Rakip katıldı! Maç başlıyor!");
+        setIsSearching(false);
+      }
+    });
+    
+    setPvp({ matchId, matchData: null, side: "host" });
     setArenaView("search");
     setIsSearching(true);
   };
 
   // İPTAL ET BUTONU
-  const handleCancelSearch = () => {
+  const handleCancelSearch = async () => {
     console.log("❌ Arama iptal edildi");
+    
     setIsSearching(false);
+    
+    // Kendi maçını sil
+    if (pvp.matchId) {
+      try {
+        off(ref(db, `matches/${pvp.matchId}`));
+        await set(ref(db, `matches/${pvp.matchId}`), null);
+      } catch {}
+    }
+    
+    setPvp({ matchId: null, matchData: null, side: null });
     setArenaView("menu");
     setSearchTimeLeft(50);
+  };
+
+  // MAÇTAN AYRIL
+  const handleLeaveMatch = async () => {
+    if (pvp.matchId) {
+      try {
+        off(ref(db, `matches/${pvp.matchId}`));
+        await set(ref(db, `matches/${pvp.matchId}`), null);
+      } catch {}
+    }
+    
+    setPvp({ matchId: null, matchData: null, side: null });
+    setBattle({ active: false, enemyHp: 0, maxEnemyHp: 0, qs: [], qIdx: 0, timer: 20, combo: 0, log: null, wait: false, dmgText: null, shaking: false });
+    setScreen("arena");
+    setArenaView("menu");
+    notify("Maçtan ayrıldın");
   };
 
   // BOT MAÇI BAŞLAT
@@ -424,6 +609,169 @@ export default function Game() {
     setScreen("battle");
   };
 
+  // PvP cevap gönder
+  const handlePvPAnswer = async (selectedIndex: number) => {
+    if (!pvp.matchId || !pvp.matchData || !player || !pvp.side) return;
+    
+    const data = pvp.matchData;
+    const isMyTurn = (pvp.side === "host" && data.state.turn === "host") || 
+                     (pvp.side === "guest" && data.state.turn === "guest");
+    
+    if (!isMyTurn) return notify("Sıra sende değil!");
+    if (data.state.lastAnswer) return notify("Bu soru zaten cevaplandı!");
+    
+    const qIdx = data.state.qIdx;
+    const q = data.state.qs[qIdx];
+    const correct = selectedIndex === q.a;
+    
+    // Cevabı kaydet
+    await set(ref(db, `matches/${pvp.matchId}/answers/${player.name}`), {
+      correct,
+      timestamp: Date.now()
+    });
+    
+    const updates: any = {
+      "state/lastAnswer": {
+        player: player.name,
+        correct,
+        timestamp: Date.now()
+      }
+    };
+    
+    await update(ref(db, `matches/${pvp.matchId}`), updates);
+    
+    // 2 saniye sonra sonuçları hesapla
+    setTimeout(async () => {
+      const currentMatch = await get(ref(db, `matches/${pvp.matchId}`));
+      const current = currentMatch.val();
+      if (!current) return;
+      
+      const myAnswer = current.state.lastAnswer;
+      const opponentName = pvp.side === "host" ? current.players.guest : current.players.host;
+      
+      let opponentAnswer = null;
+      if (opponentName) {
+        const oppSnap = await get(ref(db, `matches/${pvp.matchId}/answers/${opponentName}`));
+        opponentAnswer = oppSnap.val();
+      }
+      
+      const pStats = getStats(player);
+      const updates2: any = {};
+      
+      if (!opponentAnswer) {
+        // Rakip cevap vermedi
+        if (myAnswer.correct) {
+          if (pvp.side === "host") {
+            updates2["state/guestHp"] = Math.max(0, current.state.guestHp - pStats.atk);
+          } else {
+            updates2["state/hostHp"] = Math.max(0, current.state.hostHp - pStats.atk);
+          }
+        }
+      } else {
+        // İki cevap da var
+        if (myAnswer.correct && opponentAnswer.correct) {
+          // İkisi de doğru - hızlı olan kazansın
+          if (myAnswer.timestamp < opponentAnswer.timestamp) {
+            if (pvp.side === "host") {
+              updates2["state/guestHp"] = Math.max(0, current.state.guestHp - pStats.atk);
+            } else {
+              updates2["state/hostHp"] = Math.max(0, current.state.hostHp - pStats.atk);
+            }
+          }
+        } else if (myAnswer.correct && !opponentAnswer.correct) {
+          // Sadece ben doğru
+          if (pvp.side === "host") {
+            updates2["state/guestHp"] = Math.max(0, current.state.guestHp - pStats.atk);
+          } else {
+            updates2["state/hostHp"] = Math.max(0, current.state.hostHp - pStats.atk);
+          }
+        } else if (!myAnswer.correct && opponentAnswer.correct) {
+          // Sadece rakip doğru
+          if (pvp.side === "host") {
+            updates2["state/hostHp"] = Math.max(0, current.state.hostHp - pStats.atk);
+          } else {
+            updates2["state/guestHp"] = Math.max(0, current.state.guestHp - pStats.atk);
+          }
+        } else {
+          // İkisi de yanlış
+          updates2["state/log"] = "Kimse bilemedi!";
+          if (pvp.side === "host") {
+            updates2["state/hostHp"] = Math.max(0, current.state.hostHp - 20);
+            updates2["state/guestHp"] = Math.max(0, current.state.guestHp - 20);
+          } else {
+            updates2["state/guestHp"] = Math.max(0, current.state.guestHp - 20);
+            updates2["state/hostHp"] = Math.max(0, current.state.hostHp - 20);
+          }
+        }
+      }
+      
+      // Sonraki soruya geç
+      updates2["state/lastAnswer"] = null;
+      updates2["state/qIdx"] = (qIdx + 1) % data.state.qs.length;
+      updates2["state/turn"] = data.state.turn === "host" ? "guest" : "host";
+      updates2["state/turnStartTime"] = Date.now();
+      
+      await set(ref(db, `matches/${pvp.matchId}/answers`), null);
+      await update(ref(db, `matches/${pvp.matchId}`), updates2);
+      
+      // Zafer kontrolü
+      const finalMatch = await get(ref(db, `matches/${pvp.matchId}`));
+      const final = finalMatch.val();
+      if (final && final.state) {
+        if (final.state.guestHp <= 0 || final.state.hostHp <= 0) {
+          const winner = final.state.guestHp <= 0 ? final.players.host : final.players.guest;
+          if (winner === player.name) {
+            notify("🏆 TEBRİKLER! KAZANDIN!");
+            launchConfetti();
+            const np = { ...player };
+            np.gold += 500;
+            np.score += 200;
+            save(np);
+          } else {
+            notify("MAĞLUP OLDUN...");
+          }
+          setTimeout(async () => {
+            await set(ref(db, `matches/${pvp.matchId}`), null);
+          }, 3000);
+        }
+      }
+    }, 2000);
+  };
+
+  // Maç verisi geldiğinde battle'ı güncelle
+  useEffect(() => {
+    if (!pvp.matchData || !player || !pvp.side) return;
+    
+    const m = pvp.matchData;
+    if (!m.state || !m.state.started) return;
+    
+    const isHost = pvp.side === "host";
+    const enemyHp = isHost ? m.state.guestHp : m.state.hostHp;
+    
+    setBattle({
+      active: true,
+      region: { id: "pvp", name: "PvP", x: 0, y: 0, type: "all", bg: "https://images.unsplash.com/photo-1514539079130-25950c84af65?w=1000", unlockC: "king", levels: [] },
+      level: { id: "pvp-l", t: "PvP", hp: 0, en: isHost ? (m.players.guest || "Rakip") : m.players.host, ico: "🤼", diff: "PvP" },
+      enemyHp: enemyHp,
+      maxEnemyHp: getStats(player).maxHp,
+      qs: m.state.qs,
+      qIdx: m.state.qIdx,
+      timer: 20,
+      combo: 0,
+      log: m.state.log || null,
+      wait: m.state.lastAnswer !== null,
+      dmgText: null,
+      shaking: false,
+    });
+    
+    const currentTurn = m.state.turn;
+    if (currentTurn === "host" && isHost) setTurn("p1");
+    else if (currentTurn === "guest" && !isHost) setTurn("p1");
+    else setTurn("p2");
+    
+    setScreen("battle");
+  }, [pvp.matchData, player, pvp.side]);
+
   const shuffle = <T,>(arr: T[]): T[] => arr.slice().sort(() => Math.random() - 0.5);
 
   const launchConfetti = async () => {
@@ -438,10 +786,8 @@ export default function Game() {
   // BOT CEVAPLARI
   useEffect(() => {
     if (battle.active && botMatch && turn === "p2" && !battle.wait) {
-      console.log("🤖 Bot sırası, cevap veriyor...");
       const timer = setTimeout(() => {
         const hit = Math.random() > 0.4;
-        console.log("🤖 Bot cevabı:", hit ? "DOĞRU" : "YANLIŞ");
         handleMove(hit);
       }, 2000);
       return () => clearTimeout(timer);
@@ -466,7 +812,7 @@ export default function Game() {
         equipped: { wep: null, arm: null },
         jokers: { heal: 99, "5050": 99, skip: 99 },
         mistakes: [],
-        score: 1000,
+        score: 1000 + Math.floor(Math.random() * 500),
         unlockedRegions: ["tut", "r1", "r2", "r3"],
         regionProgress: { tut: 2, r1: 2, r2: 2, r3: 1 },
         unlockedCostumes: Object.keys(COSTUMES),
@@ -475,8 +821,15 @@ export default function Game() {
         arenaRulesSeen: true,
       };
       
+      update(ref(db, "users/" + auth.user), { 
+        score: adminP.score, 
+        lvl: adminP.lvl,
+        name: auth.user 
+      }).catch(() => {});
+      
       setPlayer(adminP);
       setScreen("menu");
+      loadLeaderboard();
       return;
     }
 
@@ -504,6 +857,7 @@ export default function Game() {
         arenaRulesSeen: false,
       };
       localStorage.setItem(key, JSON.stringify(newP));
+      update(ref(db, "users/" + auth.user), { score: 0, lvl: 1, name: auth.user }).catch(() => {});
       setAuth({ ...auth, reg: false });
       notify("Kayıt Oldun!");
     } else {
@@ -511,8 +865,10 @@ export default function Game() {
       if (!d) return notify("Kullanıcı yok!");
       const p = JSON.parse(d);
       if (p.pass !== auth.pass) return notify("Şifre yanlış!");
+      update(ref(db, "users/" + auth.user), { score: p.score || 0, lvl: p.lvl || 1, name: auth.user }).catch(() => {});
       setPlayer(p);
       setScreen("menu");
+      loadLeaderboard();
     }
   };
 
@@ -521,7 +877,6 @@ export default function Game() {
     setModal(null);
     setBotMatch(isBot);
     setTurn("p1");
-    const stats = getStats(player!);
 
     let pool = QUESTIONS.slice();
     if (r && r.type && r.type !== "all") {
@@ -851,6 +1206,22 @@ export default function Game() {
           <div style={{ ...S.glass, padding: "40px", width: "500px", textAlign: "center" }}>
             <h1 style={{ ...S.neon("#f05"), fontSize: "36px", marginBottom: "30px" }}>⚔️ ARENA ⚔️</h1>
             
+            <div style={{ marginBottom: "30px", background: "rgba(0,0,0,0.3)", borderRadius: "10px", padding: "15px" }}>
+              <h2 style={{ ...S.neon("#fc0"), marginBottom: "15px" }}>🏆 SIRALAMA</h2>
+              {leaderboard.length > 0 ? (
+                <div style={{ maxHeight: "200px", overflowY: "auto" }}>
+                  {leaderboard.map((user, index) => (
+                    <div key={user.name} style={{ display: "flex", justifyContent: "space-between", padding: "8px 12px", marginBottom: "5px", background: index < 3 ? "rgba(255,215,0,0.1)" : "rgba(255,255,255,0.05)", borderRadius: "5px" }}>
+                      <span>{index + 1}. {user.name} {index === 0 && "👑"}</span>
+                      <span style={{ color: "#fc0" }}>{user.score} Puan</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p style={{ color: "#aaa" }}>Sıralama yükleniyor...</p>
+              )}
+            </div>
+            
             <div style={{ marginBottom: "30px", color: "#aaa" }}>
               <p>🏆 Sıralamada üst sıralara tırman!</p>
               <p>⚡ Gerçek oyunculara karşı savaş</p>
@@ -926,7 +1297,16 @@ export default function Game() {
 
             <div style={{ textAlign: "center" }}>
               <div style={{ marginBottom: "16px", fontSize: "22px", fontWeight: "700", color: "#fc0" }}>{battle.log}</div>
-              {botMatch && turn !== "p1" ? (
+              {pvp.matchId ? (
+                <div>
+                  <div style={{ ...S.neon(turn === "p1" ? "#0f6" : "#f05"), fontSize: "34px" }}>
+                    {turn === "p1" ? "SENİN SIRAN" : "RAKİBİN SIRASI"}
+                  </div>
+                  {battle.wait && (
+                    <div style={{ color: "#aaa", marginTop: "10px" }}>Rakip cevap veriyor...</div>
+                  )}
+                </div>
+              ) : botMatch && turn !== "p1" ? (
                 <div style={{ ...S.neon("#f05"), fontSize: "28px", animation: "pulse 1s infinite" }}>BOT DÜŞÜNÜYOR...</div>
               ) : (
                 <div style={{ ...S.neon("#0f6"), fontSize: "34px" }}>SENİN SIRAN</div>
@@ -943,27 +1323,68 @@ export default function Game() {
           </div>
 
           <div style={{ ...S.glass, margin: "22px", padding: "22px", border: "1px solid #00eaff", minHeight: "260px", display: "flex", flexDirection: "column", justifyContent: "center" }}>
-            <>
-              <div style={{ textAlign: "center", marginBottom: "18px", fontSize: "22px", fontWeight: "800" }}>{battle.qs ? battle.qs[battle.qIdx].q : "Hazırlanıyor..."}</div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
-                {battle.qs && battle.qs[battle.qIdx].o.map((o: string, i: number) => {
-                  const isAnswered = lastAnswer.idx === battle.qIdx;
-                  const className = isAnswered ? (lastAnswer.correct ? "answer-btn correct" : "answer-btn wrong") : "answer-btn";
-                  const disabled = (botMatch && turn !== "p1") || (isAnswered && lastAnswer.idx === battle.qIdx);
-                  return (
-                    <button key={i} className={className} style={{ ...S.btn, padding: "14px", fontSize: 15, width: "100%", textTransform: "none" }} onClick={() => handleMove(i === battle.qs[battle.qIdx].a)} disabled={disabled}>{o}</button>
-                  );
-                })}
-              </div>
-              <div style={{ display: "flex", justifyContent: "center", gap: "12px", marginTop: "18px", flexWrap: "wrap" }}>
-                {Object.keys(player!.jokers).map((k) => (
-                  <button key={k} style={{ ...S.btn, background: "#444", fontSize: "13px", opacity: player!.jokers[k] === 0 ? 0.5 : 1, }} onClick={() => useJoker(k as "heal" | "5050" | "skip")} disabled={player!.jokers[k] === 0}>
-                    {k === "heal" ? "❤️" : k === "skip" ? "⏩" : "½"} ({player!.jokers[k]})
-                  </button>
-                ))}
-                <button style={{ ...S.btn, ...S.btnDanger }} onClick={() => { setScreen("menu"); setBattle({ active: false, enemyHp: 0, maxEnemyHp: 0, qs: [], qIdx: 0, timer: 20, combo: 0, log: null, wait: false, dmgText: null, shaking: false }); }}>PES ET</button>
-              </div>
-            </>
+            {pvp.matchId && pvp.matchData && pvp.matchData.state && pvp.matchData.state.started ? (
+              <>
+                <div style={{ textAlign: "center", marginBottom: "18px", fontSize: "22px", fontWeight: "800" }}>
+                  {pvp.matchData.state.qs[pvp.matchData.state.qIdx].q}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+                  {pvp.matchData.state.qs[pvp.matchData.state.qIdx].o.map((o: string, i: number) => {
+                    const isDisabled = turn !== "p1" || pvp.matchData?.state?.lastAnswer !== null;
+                    return (
+                      <button 
+                        key={i} 
+                        style={{ 
+                          ...S.btn, 
+                          padding: "14px", 
+                          fontSize: 15, 
+                          width: "100%", 
+                          textTransform: "none",
+                          opacity: isDisabled ? 0.5 : 1,
+                          cursor: isDisabled ? "not-allowed" : "pointer"
+                        }} 
+                        onClick={() => handlePvPAnswer(i)}
+                        disabled={isDisabled}
+                      >
+                        {o}
+                      </button>
+                    );
+                  })}
+                </div>
+                {pvp.matchData.state.lastAnswer && (
+                  <div style={{ textAlign: "center", marginTop: "15px", color: "#fc0" }}>
+                    {pvp.matchData.state.lastAnswer.player === player?.name 
+                      ? "Cevabınız kaydedildi, rakip bekleniyor..." 
+                      : "Rakip cevapladı, sıranızı bekleyin..."}
+                  </div>
+                )}
+                <div style={{ display: "flex", justifyContent: "center", gap: "12px", marginTop: "18px" }}>
+                  <button style={{ ...S.btn, background: "#444", fontSize: "13px" }} onClick={handleLeaveMatch}>MAÇTAN AYRIL</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ textAlign: "center", marginBottom: "18px", fontSize: "22px", fontWeight: "800" }}>{battle.qs ? battle.qs[battle.qIdx].q : "Hazırlanıyor..."}</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+                  {battle.qs && battle.qs[battle.qIdx].o.map((o: string, i: number) => {
+                    const isAnswered = lastAnswer.idx === battle.qIdx;
+                    const className = isAnswered ? (lastAnswer.correct ? "answer-btn correct" : "answer-btn wrong") : "answer-btn";
+                    const disabled = (botMatch && turn !== "p1") || (isAnswered && lastAnswer.idx === battle.qIdx);
+                    return (
+                      <button key={i} className={className} style={{ ...S.btn, padding: "14px", fontSize: 15, width: "100%", textTransform: "none" }} onClick={() => handleMove(i === battle.qs[battle.qIdx].a)} disabled={disabled}>{o}</button>
+                    );
+                  })}
+                </div>
+                <div style={{ display: "flex", justifyContent: "center", gap: "12px", marginTop: "18px", flexWrap: "wrap" }}>
+                  {Object.keys(player!.jokers).map((k) => (
+                    <button key={k} style={{ ...S.btn, background: "#444", fontSize: "13px", opacity: player!.jokers[k] === 0 ? 0.5 : 1, }} onClick={() => useJoker(k as "heal" | "5050" | "skip")} disabled={player!.jokers[k] === 0}>
+                      {k === "heal" ? "❤️" : k === "skip" ? "⏩" : "½"} ({player!.jokers[k]})
+                    </button>
+                  ))}
+                  <button style={{ ...S.btn, ...S.btnDanger }} onClick={() => { setScreen("menu"); setBattle({ active: false, enemyHp: 0, maxEnemyHp: 0, qs: [], qIdx: 0, timer: 20, combo: 0, log: null, wait: false, dmgText: null, shaking: false }); }}>PES ET</button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
