@@ -11,7 +11,6 @@ import {
   onValue,
   off,
   get,
-  serverTimestamp,
 } from "firebase/database";
 
 // --- FIREBASE ---
@@ -118,6 +117,7 @@ type PvPState = {
         timestamp: number;
       } | null;
       turnStartTime?: number;
+      log?: string | null;
     };
     createdAt: number;
   } | null;
@@ -291,9 +291,13 @@ export default function Game() {
   const [lastAnswer, setLastAnswer] = useState<{ idx: number | null; correct: boolean | null }>({ idx: null, correct: null });
   const [arenaView, setArenaView] = useState<ArenaView>("menu");
   const [answerStartTime, setAnswerStartTime] = useState<number | null>(null);
+  const [searchTimer, setSearchTimer] = useState<NodeJS.Timeout | null>(null);
 
   // PvP state
   const [pvp, setPvp] = useState<PvPState>({ searching: false, matchId: null, matchData: null, isHost: false, side: null, searchStartTime: undefined });
+
+  // Sıralama için leaderboard state
+  const [leaderboard, setLeaderboard] = useState<Array<{name: string, score: number, lvl: number}>>([]);
 
   // Confetti canvas ref
   const confettiRef = useRef<HTMLCanvasElement | null>(null);
@@ -331,58 +335,127 @@ REGIONS.forEach((r) => {
     p.regionProgress[r.id] = 0;
   }
 });
-    if (p.name !== "ADMIN") {
+    if (p.name !== "ADMIN" && p.name !== "ADMIN2" && p.name !== "ADMIN3") {
       try {
         localStorage.setItem(SAVE_KEY + p.name, JSON.stringify(p));
-        update(ref(db, "users/" + p.name), { score: p.score }).catch(() => {});
+        update(ref(db, "users/" + p.name), { score: p.score, lvl: p.lvl }).catch(() => {});
       } catch (e) {}
     }
     setPlayer({ ...p });
+    loadLeaderboard(); // Leaderboard'u güncelle
+  };
+
+  // Leaderboard yükle
+  const loadLeaderboard = async () => {
+    try {
+      const usersRef = ref(db, "users");
+      const snapshot = await get(usersRef);
+      if (snapshot.exists()) {
+        const users = snapshot.val();
+        const leaderboardData = Object.keys(users)
+          .map(key => ({
+            name: key,
+            score: users[key].score || 0,
+            lvl: users[key].lvl || 1
+          }))
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 10);
+        setLeaderboard(leaderboardData);
+      }
+    } catch (e) {
+      console.error("Leaderboard yüklenemedi:", e);
+    }
   };
 
   useEffect(() => {
     setMounted(true);
-    // cleanup on unload for PvP listener if any
+    loadLeaderboard(); // İlk yüklemede leaderboard'u al
     return () => {
       if (pvp.matchId) {
         try {
           off(ref(db, `matches/${pvp.matchId}`));
         } catch {}
       }
+      if (searchTimer) {
+        clearInterval(searchTimer);
+      }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 50 saniye timeout kontrolü
+  // 50 saniye timeout kontrolü - DÜZELTİLDİ
   useEffect(() => {
     if (pvp.searching && pvp.searchStartTime) {
-      const interval = setInterval(() => {
-        const elapsed = Date.now() - pvp.searchStartTime!;
-        if (elapsed >= 50000) { // 50 saniye
-          // Zaman aşımı, bot ile eşleş
-          setPvp(prev => ({ ...prev, searching: false }));
+      // Önceki timer'ı temizle
+      if (searchTimer) {
+        clearInterval(searchTimer);
+      }
+      
+      // Yeni timer başlat
+      const timer = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - pvp.searchStartTime!) / 1000);
+        console.log("Arama süresi:", elapsed, "saniye");
+        
+        if (elapsed >= 50) { // 50 saniye
+          console.log("50 saniye doldu, bot ile eşleşiyor...");
+          clearInterval(timer);
+          setPvp(prev => ({ ...prev, searching: false, searchStartTime: undefined }));
           startBotArenaMatch();
           notify("Rakip bulunamadı, bot ile eşleştiniz!");
         }
       }, 1000);
-      return () => clearInterval(interval);
+      
+      setSearchTimer(timer);
+      
+      return () => {
+        if (timer) {
+          clearInterval(timer);
+        }
+      };
+    } else {
+      if (searchTimer) {
+        clearInterval(searchTimer);
+        setSearchTimer(null);
+      }
     }
   }, [pvp.searching, pvp.searchStartTime]);
 
-  // Sayaç gösterimi için
+  // Sayaç gösterimi için - DÜZELTİLDİ
   const getSearchTimeLeft = () => {
     if (!pvp.searchStartTime) return 50;
     const elapsed = Math.floor((Date.now() - pvp.searchStartTime) / 1000);
-    return Math.max(0, 50 - elapsed);
+    const left = Math.max(0, 50 - elapsed);
+    console.log("Kalan süre:", left, "saniye");
+    return left;
   };
 
   const startBotArenaMatch = () => {
-    const botPower = getStats(player!).atk * 0.8; // Bot bizim gücümüzün %80'i kadar
-    startBattle(
-      { id: "arena", name: "ARENA", x: 0, y: 0, type: "all", bg: "https://images.unsplash.com/photo-1514539079130-25950c84af65?w=1000", unlockC: "king", levels: [] },
-      { id: "pvp-bot", t: "Bot Arena", hp: getStats(player!).maxHp, en: "Bot", ico: "🤖", diff: "Arena" },
-      true
-    );
+    const stats = getStats(player!);
+    const botAtk = Math.floor(stats.atk * 0.8); // Bot bizim gücümüzün %80'i
+    const botHp = stats.maxHp;
+    
+    // Bot savaşını başlat
+    setBotMatch(true);
+    setTurn("p1");
+    
+    const pool = QUESTIONS.slice();
+    const qs = shuffle(pool).slice(0, 25);
+    
+    setBattle({
+      active: true,
+      region: { id: "arena", name: "ARENA", x: 0, y: 0, type: "all", bg: "https://images.unsplash.com/photo-1514539079130-25950c84af65?w=1000", unlockC: "king", levels: [] },
+      level: { id: "pvp-bot", t: "Bot Arena", hp: botHp, en: "Bot", ico: "🤖", diff: "Arena" },
+      enemyHp: botHp,
+      maxEnemyHp: botHp,
+      qs,
+      qIdx: 0,
+      timer: 20,
+      combo: 0,
+      log: null,
+      wait: false,
+      dmgText: null,
+      shaking: false,
+    });
+    setScreen("battle");
   };
 
   const handleArenaClick = () => {
@@ -390,7 +463,7 @@ REGIONS.forEach((r) => {
     const r2Levels = REGIONS.find((r) => r.id === "r2")!.levels.length;
     const r2Progress = player!.regionProgress["r2"] ?? 0;
 
-    if (player!.name !== "ADMIN" && r2Progress < r2Levels) {
+    if (player!.name !== "ADMIN" && player!.name !== "ADMIN2" && player!.name !== "ADMIN3" && r2Progress < r2Levels) {
       notify("Arena için Hikaye Ormanı bitmeli!");
       return;
     }
@@ -482,7 +555,7 @@ REGIONS.forEach((r) => {
   useEffect(() => {
     if (battle.active && botMatch && turn === "p2" && !battle.wait) {
       const timer = setTimeout(() => {
-        const hit = Math.random() > 0.4;
+        const hit = Math.random() > 0.4; // %60 doğruluk
         handleMove(hit);
       }, 1400 + Math.random() * 1400);
       return () => clearTimeout(timer);
@@ -493,33 +566,39 @@ REGIONS.forEach((r) => {
   const handleAuth = () => {
     if (!auth.user || !auth.pass) return notify("Boş bırakma!");
     const key = SAVE_KEY + auth.user;
-    if (auth.user === "ADMIN" && auth.pass === "1234") {
-  const adminP: Player = {
-    name: "ADMIN",
-    pass: "1234",
-    hp: 9999,
-    maxHp: 9999,
-    gold: 99999,
-    xp: 0,
-    maxXp: 100,
-    lvl: 99,
-    inventory: [],
-    equipped: { wep: null, arm: null },
-    jokers: { heal: 99, "5050": 99, skip: 99 },
-    mistakes: [],
-    score: 0,
-    unlockedRegions: ["tut", "r1", "r2", "r3"],
-    regionProgress: { tut: 2, r1: 2, r2: 2, r3: 1 },
-    unlockedCostumes: Object.keys(COSTUMES),
-    currentCostume: "king",
-    tutorialSeen: true,
-    arenaRulesSeen: true,
-  };
-
-  setPlayer(adminP);
-  setScreen("menu");
-  return;
-}
+    
+    // ADMIN hesapları
+    if ((auth.user === "ADMIN" || auth.user === "ADMIN2" || auth.user === "ADMIN3") && auth.pass === "1234") {
+      const adminP: Player = {
+        name: auth.user,
+        pass: "1234",
+        hp: 9999,
+        maxHp: 9999,
+        gold: 99999,
+        xp: 0,
+        maxXp: 100,
+        lvl: 99,
+        inventory: [],
+        equipped: { wep: null, arm: null },
+        jokers: { heal: 99, "5050": 99, skip: 99 },
+        mistakes: [],
+        score: 1000, // Adminlerin de skoru olsun
+        unlockedRegions: ["tut", "r1", "r2", "r3"],
+        regionProgress: { tut: 2, r1: 2, r2: 2, r3: 1 },
+        unlockedCostumes: Object.keys(COSTUMES),
+        currentCostume: "king",
+        tutorialSeen: true,
+        arenaRulesSeen: true,
+      };
+      
+      // Admin skorunu Firebase'e kaydet
+      update(ref(db, "users/" + auth.user), { score: adminP.score, lvl: adminP.lvl }).catch(() => {});
+      
+      setPlayer(adminP);
+      setScreen("menu");
+      loadLeaderboard(); // Leaderboard'u güncelle
+      return;
+    }
 
     if (auth.reg) {
       if (localStorage.getItem(key)) return notify("Kullanıcı zaten var!");
@@ -545,6 +624,8 @@ REGIONS.forEach((r) => {
         arenaRulesSeen: false,
       };
       localStorage.setItem(key, JSON.stringify(newP));
+      // Yeni kullanıcıyı Firebase'e ekle
+      update(ref(db, "users/" + auth.user), { score: 0, lvl: 1 }).catch(() => {});
       setAuth({ ...auth, reg: false });
       notify("Kayıt Oldun!");
     } else {
@@ -554,6 +635,7 @@ REGIONS.forEach((r) => {
       if (p.pass !== auth.pass) return notify("Şifre yanlış!");
       setPlayer(p);
       setScreen("menu");
+      loadLeaderboard(); // Leaderboard'u güncelle
     }
   };
 
@@ -595,7 +677,7 @@ REGIONS.forEach((r) => {
     let nb = { ...battle };
     const currentTurn = turn;
     const pStats = getStats(player!);
-    const dmg = botMatch && currentTurn === "p2" ? 35 + player!.lvl * 2 : pStats.atk;
+    const dmg = botMatch && currentTurn === "p2" ? Math.floor(pStats.atk * 0.8) : pStats.atk;
 
     const answeredIdx = nb.qIdx;
     playSound(correct ? "hit" : "hit");
@@ -773,7 +855,8 @@ const buyItem = (it: Item) => {
   const np = { ...player };
   if (!np.jokers) np.jokers = { heal: 0, "5050": 0, skip: 0 };
 
-  if (np.name === "ADMIN") {
+  // Admin hesaplarına bedava
+  if (np.name === "ADMIN" || np.name === "ADMIN2" || np.name === "ADMIN3") {
     if (it.type === "joker") {
       const jid = it.jokerId;
       if (jid) np.jokers[jid] = (np.jokers[jid] || 0) + 1;
@@ -876,6 +959,7 @@ const sellItem = (it: Item) => {
         started: false,
         lastAnswer: null,
         turnStartTime: Date.now(),
+        log: null,
       },
       createdAt: Date.now(),
     };
@@ -885,7 +969,8 @@ const sellItem = (it: Item) => {
       const val = snap.val();
       setPvp((s) => ({ ...s, matchData: val }));
       if (val && val.players && val.players.guest && val.state && !val.state.started && val.players.host === player.name) {
-        const guestHp = getStats({ ...player!, name: val.players.guest, pass: "", hp: 100, maxHp: 100, gold: 0, xp: 0, maxXp: 100, lvl: 1, inventory: [], equipped: { wep: null, arm: null }, jokers: { heal: 0, "5050": 0, skip: 0 }, mistakes: [], score: 0, unlockedRegions: [], regionProgress: {}, unlockedCostumes: [], currentCostume: "default", tutorialSeen: false }).maxHp;
+        const guestStats = getStats(player); // Gerçek rakibin istatistikleri için guest'in player objesine ihtiyacımız var
+        const guestHp = guestStats.maxHp;
         update(ref(db, `matches/${matchId}/state`), { guestHp, started: true });
       }
     });
@@ -909,16 +994,20 @@ const sellItem = (it: Item) => {
       return;
     }
     await update(ref(db, `matches/${candidateId}/players`), { guest: player.name });
-    setPvp({ searching: false, matchId: candidateId, matchData: null, isHost: false, side: "guest" });
+    setPvp({ searching: false, matchId: candidateId, matchData: null, isHost: false, side: "guest", searchStartTime: undefined });
     onValue(ref(db, `matches/${candidateId}`), (snap2) => {
       const val = snap2.val();
       setPvp((s) => ({ ...s, matchData: val }));
     });
     setScreen("battle");
-    notify(`Maça katıldın: ${candidateId}`);
+    notify(`Maça katıldın!`);
   };
 
   const cancelSearch = async () => {
+    if (searchTimer) {
+      clearInterval(searchTimer);
+      setSearchTimer(null);
+    }
     if (pvp.matchId) {
       try {
         off(ref(db, `matches/${pvp.matchId}`));
@@ -930,6 +1019,10 @@ const sellItem = (it: Item) => {
   };
 
   const leavePvP = async () => {
+    if (searchTimer) {
+      clearInterval(searchTimer);
+      setSearchTimer(null);
+    }
     if (pvp.matchId) {
       try {
         off(ref(db, `matches/${pvp.matchId}`));
@@ -990,80 +1083,106 @@ const sellItem = (it: Item) => {
       if (!current) return;
 
       const myAnswer = current.state.lastAnswer;
-      const opponentName = side === "host" ? current.players.guest : current.players.host;
       
-      // Rakibin cevabını kontrol et
-      const opponentAnswerRef = ref(db, `matches/${matchId}/answers/${opponentName}`);
-      const opponentSnap = await get(opponentAnswerRef);
-      const opponentAnswer = opponentSnap.val();
-
-      const pStats = getStats(player!);
-      const opponentStats = pStats; // Gerçek rakibin istatistikleri için ayrı bir sistem kurulmalı
-
-      if (!opponentAnswer) {
-        // Rakip cevap vermedi, sen kazandın
-        if (side === "host") {
-          updates["state/guestHp"] = 0;
-        } else {
-          updates["state/hostHp"] = 0;
-        }
-        updates["state/lastAnswer"] = null;
-        updates["state/qIdx"] = (qIdx + 1) % qs.length;
-        updates["state/turn"] = data.state.turn === "host" ? "guest" : "host";
-        updates["state/turnStartTime"] = Date.now();
-        
-        await update(ref(db, `matches/${matchId}`), updates);
-        notify("Rakip cevap vermedi, kazandın!");
-        launchConfetti();
-        return;
+      // Rakibin cevabını kontrol et (answers node'undan)
+      const opponentName = side === "host" ? current.players.guest : current.players.host;
+      let opponentAnswer = null;
+      
+      if (opponentName) {
+        const opponentAnswerRef = ref(db, `matches/${matchId}/answers/${opponentName}`);
+        const opponentSnap = await get(opponentAnswerRef);
+        opponentAnswer = opponentSnap.val();
       }
 
-      // İki cevap da var
-      if (myAnswer.correct && opponentAnswer.correct) {
-        // İkisi de doğru, hızlı olan kazansın
-        if (myAnswer.timestamp < opponentAnswer.timestamp) {
-          // Sen kazandın
+      const pStats = getStats(player!);
+      const botDmg = Math.floor(pStats.atk * 0.8); // Bot hasarı
+
+      if (!opponentAnswer) {
+        // Rakip cevap vermedi veya bot
+        if (opponentName && opponentName.includes("BOT")) {
+          // Bot rastgele cevap ver
+          const botCorrect = Math.random() > 0.4;
+          if (myAnswer.correct && botCorrect) {
+            // İkisi de doğru - hızlı olan kazansın
+            if (side === "host") {
+              updates["state/guestHp"] = Math.max(0, current.state.guestHp - pStats.atk);
+            } else {
+              updates["state/hostHp"] = Math.max(0, current.state.hostHp - pStats.atk);
+            }
+          } else if (myAnswer.correct && !botCorrect) {
+            // Sadece sen doğru
+            if (side === "host") {
+              updates["state/guestHp"] = Math.max(0, current.state.guestHp - pStats.atk);
+            } else {
+              updates["state/hostHp"] = Math.max(0, current.state.hostHp - pStats.atk);
+            }
+          } else if (!myAnswer.correct && botCorrect) {
+            // Sadece bot doğru
+            if (side === "host") {
+              updates["state/hostHp"] = Math.max(0, current.state.hostHp - botDmg);
+            } else {
+              updates["state/guestHp"] = Math.max(0, current.state.guestHp - botDmg);
+            }
+          } else {
+            // İkisi de yanlış
+            updates["state/log"] = "Kimse bilemedi!";
+            if (side === "host") {
+              updates["state/hostHp"] = Math.max(0, current.state.hostHp - 20);
+              updates["state/guestHp"] = Math.max(0, current.state.guestHp - 20);
+            } else {
+              updates["state/guestHp"] = Math.max(0, current.state.guestHp - 20);
+              updates["state/hostHp"] = Math.max(0, current.state.hostHp - 20);
+            }
+          }
+        } else {
+          // Gerçek rakip cevap vermedi - sen kazandın
+          if (side === "host") {
+            updates["state/guestHp"] = 0;
+          } else {
+            updates["state/hostHp"] = 0;
+          }
+        }
+      } else {
+        // İki cevap da var
+        if (myAnswer.correct && opponentAnswer.correct) {
+          // İkisi de doğru, hızlı olan kazansın
+          if (myAnswer.timestamp < opponentAnswer.timestamp) {
+            if (side === "host") {
+              updates["state/guestHp"] = Math.max(0, current.state.guestHp - pStats.atk);
+            } else {
+              updates["state/hostHp"] = Math.max(0, current.state.hostHp - pStats.atk);
+            }
+          } else if (opponentAnswer.timestamp < myAnswer.timestamp) {
+            if (side === "host") {
+              updates["state/hostHp"] = Math.max(0, current.state.hostHp - pStats.atk);
+            } else {
+              updates["state/guestHp"] = Math.max(0, current.state.guestHp - pStats.atk);
+            }
+          }
+        } else if (myAnswer.correct && !opponentAnswer.correct) {
+          // Sadece sen doğru
           if (side === "host") {
             updates["state/guestHp"] = Math.max(0, current.state.guestHp - pStats.atk);
           } else {
             updates["state/hostHp"] = Math.max(0, current.state.hostHp - pStats.atk);
           }
-          notify("Hızlı cevap! +Hasar!");
-        } else if (opponentAnswer.timestamp < myAnswer.timestamp) {
-          // Rakip kazandı
+        } else if (!myAnswer.correct && opponentAnswer.correct) {
+          // Sadece rakip doğru
           if (side === "host") {
-            updates["state/hostHp"] = Math.max(0, current.state.hostHp - opponentStats.atk);
+            updates["state/hostHp"] = Math.max(0, current.state.hostHp - pStats.atk);
           } else {
-            updates["state/guestHp"] = Math.max(0, current.state.guestHp - opponentStats.atk);
+            updates["state/guestHp"] = Math.max(0, current.state.guestHp - pStats.atk);
           }
-        }
-      } else if (myAnswer.correct && !opponentAnswer.correct) {
-        // Sadece sen doğru
-        if (side === "host") {
-          updates["state/guestHp"] = Math.max(0, current.state.guestHp - pStats.atk);
         } else {
-          updates["state/hostHp"] = Math.max(0, current.state.hostHp - pStats.atk);
-        }
-      } else if (!myAnswer.correct && opponentAnswer.correct) {
-        // Sadece rakip doğru
-        if (side === "host") {
-          updates["state/hostHp"] = Math.max(0, current.state.hostHp - opponentStats.atk);
-        } else {
-          updates["state/guestHp"] = Math.max(0, current.state.guestHp - opponentStats.atk);
-        }
-      } else {
-        // İkisi de yanlış
-        updates["state/log"] = "Kimse bilemedi!";
-      }
-
-      // Her iki taraf da yanlışsa can azaltma
-      if (!myAnswer.correct && !opponentAnswer.correct) {
-        if (side === "host") {
-          updates["state/hostHp"] = Math.max(0, current.state.hostHp - 20);
-          updates["state/guestHp"] = Math.max(0, current.state.guestHp - 20);
-        } else {
-          updates["state/guestHp"] = Math.max(0, current.state.guestHp - 20);
-          updates["state/hostHp"] = Math.max(0, current.state.hostHp - 20);
+          // İkisi de yanlış
+          updates["state/log"] = "Kimse bilemedi!";
+          if (side === "host") {
+            updates["state/hostHp"] = Math.max(0, current.state.hostHp - 20);
+            updates["state/guestHp"] = Math.max(0, current.state.guestHp - 20);
+          } else {
+            updates["state/guestHp"] = Math.max(0, current.state.guestHp - 20);
+            updates["state/hostHp"] = Math.max(0, current.state.hostHp - 20);
+          }
         }
       }
 
@@ -1082,21 +1201,21 @@ const sellItem = (it: Item) => {
       const updatedMatch = await get(ref(db, `matches/${matchId}`));
       const updated = updatedMatch.val();
       if (updated && updated.state) {
-        if (updated.state.guestHp <= 0) {
-          notify("TEBRİKLER! ARENA ŞAMPİYONU!");
-          launchConfetti();
-          const np = { ...player! };
-          np.gold += 500;
-          np.score += 200;
-          save(np);
+        if (updated.state.guestHp <= 0 || updated.state.hostHp <= 0) {
+          const winner = updated.state.guestHp <= 0 ? updated.players.host : updated.players.guest;
+          if (winner === player.name) {
+            notify("🏆 TEBRİKLER! ARENA ŞAMPİYONU!");
+            launchConfetti();
+            const np = { ...player! };
+            np.gold += 500;
+            np.score += 200;
+            save(np);
+          } else {
+            notify("MAĞLUP OLDUN...");
+          }
           setTimeout(async () => {
             await set(ref(db, `matches/${matchId}`), null);
-          }, 2000);
-        } else if (updated.state.hostHp <= 0) {
-          notify("MAĞLUP OLDUN...");
-          setTimeout(async () => {
-            await set(ref(db, `matches/${matchId}`), null);
-          }, 2000);
+          }, 3000);
         }
       }
     }, 2000); // Rakibi 2 saniye bekle
@@ -1120,33 +1239,21 @@ const sellItem = (it: Item) => {
       const enemyHp = isHost ? m.state.guestHp : m.state.hostHp;
       const myHp = isHost ? m.state.hostHp : m.state.guestHp;
       
-     type PvPState = {
-  searching: boolean;
-  matchId: string | null;
-  matchData: {
-    id: string;
-    players: { host: string; guest: string | null };
-    state: {
-      hostHp: number;
-      guestHp: number;
-      turn: "host" | "guest";
-      qIdx: number;
-      qs: Q[];
-      started: boolean;
-      lastAnswer?: {
-        player: string;
-        correct: boolean;
-        timestamp: number;
-      } | null;
-      turnStartTime?: number;
-      log?: string | null; // 👈 BU SATIRI EKLE!
-    };
-    createdAt: number;
-  } | null;
-  isHost: boolean;
-  side: "host" | "guest" | null;
-  searchStartTime?: number;
-};
+      setBattle({
+        active: true,
+        region: { id: "pvp", name: "PvP", x: 0, y: 0, type: "all", bg: "https://images.unsplash.com/photo-1514539079130-25950c84af65?w=1000", unlockC: "king", levels: [] },
+        level: { id: "pvp-l", t: "PvP", hp: 0, en: isHost ? (m.players.guest ?? "Bot") : m.players.host, ico: "🤼", diff: "PvP", isBoss: false },
+        enemyHp: enemyHp,
+        maxEnemyHp: getStats(player).maxHp,
+        qs: m.state.qs,
+        qIdx: m.state.qIdx,
+        timer: 20,
+        combo: 0,
+        log: m.state.log || null,
+        wait: m.state.lastAnswer !== null,
+        dmgText: null,
+        shaking: false,
+      });
       
       const currentTurn = m.state.turn;
       if (currentTurn === "host" && isHost) setTurn("p1");
@@ -1163,20 +1270,19 @@ const sellItem = (it: Item) => {
     if (!battle.active || !pvp.matchId) return;
     
     const interval = setInterval(() => {
-      if (answerStartTime) {
+      if (answerStartTime && turn === "p1") {
         const elapsed = Math.floor((Date.now() - answerStartTime) / 1000);
         const remaining = 20 - elapsed;
-        if (remaining <= 0) {
+        if (remaining <= 0 && !battle.wait) {
           // Süre doldu, cevap verilmemiş gibi işle
-          if (turn === "p1") {
-            pvpAnswer(-1); // -1 cevap verilmedi anlamında
-          }
+          notify("Süren doldu! Cevap veremedin!");
+          pvpAnswer(-1);
         }
       }
     }, 1000);
     
     return () => clearInterval(interval);
-  }, [battle.active, pvp.matchId, answerStartTime, turn]);
+  }, [battle.active, pvp.matchId, answerStartTime, turn, battle.wait]);
 
   // --- STYLES ---
   const globalStyles = `
@@ -1272,6 +1378,31 @@ return (
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <div style={{ ...S.glass, padding: "40px", width: "500px", textAlign: "center" }}>
             <h1 style={{ ...S.neon("#f05"), fontSize: "36px", marginBottom: "30px" }}>⚔️ ARENA ⚔️</h1>
+            
+            {/* LEADERBOARD - SIRALAMA */}
+            <div style={{ marginBottom: "30px", background: "rgba(0,0,0,0.3)", borderRadius: "10px", padding: "15px" }}>
+              <h2 style={{ ...S.neon("#fc0"), marginBottom: "15px" }}>🏆 SIRALAMA</h2>
+              {leaderboard.length > 0 ? (
+                <div style={{ maxHeight: "200px", overflowY: "auto" }}>
+                  {leaderboard.map((user, index) => (
+                    <div key={user.name} style={{ 
+                      display: "flex", 
+                      justifyContent: "space-between", 
+                      padding: "8px 12px", 
+                      marginBottom: "5px",
+                      background: index < 3 ? "rgba(255,215,0,0.1)" : "rgba(255,255,255,0.05)",
+                      borderRadius: "5px"
+                    }}>
+                      <span>{index + 1}. {user.name} {index === 0 && "👑"}</span>
+                      <span style={{ color: "#fc0" }}>{user.score} Puan</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p style={{ color: "#aaa" }}>Sıralama yükleniyor...</p>
+              )}
+            </div>
+            
             <div style={{ marginBottom: "30px", color: "#aaa" }}>
               <p>🏆 Sıralamada üst sıralara tırman!</p>
               <p>⚡ Gerçek oyunculara karşı savaş</p>
@@ -1400,7 +1531,7 @@ return (
                   {turn === "p2" && battle.wait && (
                     <div style={{ color: "#aaa", marginTop: "10px" }}>Rakip cevap veriyor...</div>
                   )}
-                  {turn === "p1" && answerStartTime && (
+                  {turn === "p1" && answerStartTime && !battle.wait && (
                     <div style={{ fontSize: "24px", color: "#00eaff", marginTop: "10px" }}>
                       {Math.max(0, 20 - Math.floor((Date.now() - answerStartTime) / 1000))}s
                     </div>
