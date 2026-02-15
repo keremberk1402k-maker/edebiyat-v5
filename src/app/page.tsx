@@ -471,54 +471,65 @@ export default function Game() {
     setScreen("arena");
   };
 
-  // EŞLEŞTİRME BUL BUTONU
+  // EŞLEŞTİRME BUL BUTONU - DÜZELTİLDİ
   const handleFindMatch = async () => {
     console.log("🎮 Eşleştirme bul butonuna tıklandı!");
     
-    if (!player) return;
+    if (!player) {
+      notify("Önce giriş yapmalısın!");
+      return;
+    }
     
-    // Önce kendi maçını oluştur
-    const pool = QUESTIONS.slice();
-    const qs = shuffle(pool).slice(0, 30);
-    const newRef = push(ref(db, "matches"));
-    const matchId = newRef.key!;
-    
-    const initialState = {
-      id: matchId,
-      players: { host: player.name, guest: null },
-      state: {
-        hostHp: getStats(player).maxHp,
-        guestHp: 0,
-        turn: "host" as const,
-        qIdx: 0,
-        qs,
-        started: false,
-        lastAnswer: null,
-        turnStartTime: Date.now(),
-        log: null,
-      },
-      createdAt: Date.now(),
-    };
-    
-    await set(newRef, initialState);
-    
-    // Kendi maçını dinle
-    onValue(ref(db, `matches/${matchId}`), (snap) => {
-      const val = snap.val();
-      setPvp(prev => ({ ...prev, matchData: val }));
+    try {
+      // Önce kendi maçını oluştur
+      const pool = QUESTIONS.slice();
+      const qs = shuffle(pool).slice(0, 30);
+      const newRef = push(ref(db, "matches"));
+      const matchId = newRef.key!;
       
-      // Guest katıldıysa maçı başlat
-      if (val && val.players && val.players.guest && val.state && !val.state.started) {
-        const guestHp = getStats(player).maxHp;
-        update(ref(db, `matches/${matchId}/state`), { guestHp, started: true });
-        notify("🎮 Rakip katıldı! Maç başlıyor!");
-        setIsSearching(false);
-      }
-    });
-    
-    setPvp({ matchId, matchData: null, side: "host" });
-    setArenaView("search");
-    setIsSearching(true);
+      const initialState = {
+        id: matchId,
+        players: { host: player.name, guest: null },
+        state: {
+          hostHp: getStats(player).maxHp,
+          guestHp: 0,
+          turn: "host" as const,
+          qIdx: 0,
+          qs,
+          started: false,
+          lastAnswer: null,
+          turnStartTime: Date.now(),
+          log: null,
+        },
+        createdAt: Date.now(),
+      };
+      
+      console.log("Maç oluşturuluyor:", matchId);
+      await set(newRef, initialState);
+      
+      // Kendi maçını dinle
+      onValue(ref(db, `matches/${matchId}`), (snap) => {
+        const val = snap.val();
+        console.log("Maç güncellendi:", val);
+        setPvp(prev => ({ ...prev, matchData: val }));
+        
+        // Guest katıldıysa maçı başlat
+        if (val && val.players && val.players.guest && val.state && !val.state.started) {
+          const guestHp = getStats(player).maxHp;
+          update(ref(db, `matches/${matchId}/state`), { guestHp, started: true });
+          notify("🎮 Rakip katıldı! Maç başlıyor!");
+          setIsSearching(false);
+        }
+      });
+      
+      setPvp({ matchId, matchData: null, side: "host" });
+      setArenaView("search");
+      setIsSearching(true);
+      
+    } catch (error) {
+      console.error("Maç oluşturma hatası:", error);
+      notify("Maç oluşturulamadı!");
+    }
   };
 
   // İPTAL ET BUTONU
@@ -532,7 +543,9 @@ export default function Game() {
       try {
         off(ref(db, `matches/${pvp.matchId}`));
         await set(ref(db, `matches/${pvp.matchId}`), null);
-      } catch {}
+      } catch (error) {
+        console.error("Maç silme hatası:", error);
+      }
     }
     
     setPvp({ matchId: null, matchData: null, side: null });
@@ -546,7 +559,9 @@ export default function Game() {
       try {
         off(ref(db, `matches/${pvp.matchId}`));
         await set(ref(db, `matches/${pvp.matchId}`), null);
-      } catch {}
+      } catch (error) {
+        console.error("Maç silme hatası:", error);
+      }
     }
     
     setPvp({ matchId: null, matchData: null, side: null });
@@ -1192,7 +1207,14 @@ export default function Game() {
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", width: "620px" }}>
             {[{ id: "map", t: "MACERA", i: "🗺️", c: "#fc0" }, { id: "arena", t: "ARENA", i: "⚔️", c: "#f05" }, { id: "shop", t: "MARKET", i: "🛒", c: "#0f6" }, { id: "inv", t: "ÇANTA", i: "🎒", c: "#00eaff" }].map((m) => (
-              <div key={m.id} onClick={() => { playSound("click"); if (m.id === "arena") { handleArenaClick(); } else setScreen(m.id as any); }} style={{ ...S.glass, height: "210px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: "pointer", border: `1px solid ${m.c}`, background: "rgba(20,20,30,0.84)" }}>
+              <div key={m.id} onClick={() => { 
+                playSound("click"); 
+                if (m.id === "arena") { 
+                  handleArenaClick(); 
+                } else { 
+                  setScreen(m.id as any); 
+                } 
+              }} style={{ ...S.glass, height: "210px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: "pointer", border: `1px solid ${m.c}`, background: "rgba(20,20,30,0.84)" }}>
                 <div style={{ fontSize: "64px", marginBottom: "14px" }}>{m.i}</div>
                 <div style={{ ...S.neon(m.c), fontSize: "20px", fontWeight: "800" }}>{m.t}</div>
               </div>
@@ -1227,9 +1249,31 @@ export default function Game() {
               <p>⚡ Gerçek oyunculara karşı savaş</p>
               <p>🤖 50 sn'de rakip bulunmazsa bot ile eşleş</p>
             </div>
-            <button style={{ ...S.btn, ...S.btnDanger, width: "100%", padding: "18px", fontSize: "20px", marginBottom: "15px" }} onClick={handleFindMatch}>🎮 EŞLEŞTİRME BUL</button>
-            <button style={{ ...S.btn, width: "100%", padding: "12px" }} onClick={() => { const np = { ...player!, arenaRulesSeen: true }; save(np); setArenaView("rules"); }}>📜 KURALLAR</button>
-            <button style={{ ...S.btn, ...S.btnSuccess, width: "100%", padding: "12px", marginTop: "15px" }} onClick={() => setScreen("menu")}>GERİ</button>
+            
+            <button 
+              style={{ ...S.btn, ...S.btnDanger, width: "100%", padding: "18px", fontSize: "20px", marginBottom: "15px" }} 
+              onClick={handleFindMatch}
+            >
+              🎮 EŞLEŞTİRME BUL
+            </button>
+            
+            <button 
+              style={{ ...S.btn, width: "100%", padding: "12px" }} 
+              onClick={() => { 
+                const np = { ...player!, arenaRulesSeen: true }; 
+                save(np); 
+                setArenaView("rules"); 
+              }}
+            >
+              📜 KURALLAR
+            </button>
+            
+            <button 
+              style={{ ...S.btn, ...S.btnSuccess, width: "100%", padding: "12px", marginTop: "15px" }} 
+              onClick={() => setScreen("menu")}
+            >
+              GERİ
+            </button>
           </div>
         </div>
       )}
@@ -1262,7 +1306,16 @@ export default function Game() {
               <p>• Bot rastgele cevaplar verir (%60 doğruluk)</p>
             </div>
 
-            <button style={{ ...S.btn, ...S.btnSuccess, width: "100%", padding: "15px", fontSize: "18px" }} onClick={() => { const np = { ...player!, arenaRulesSeen: true }; save(np); setArenaView("menu"); }}>ANLAŞILDI, ARENA'YA DÖN</button>
+            <button 
+              style={{ ...S.btn, ...S.btnSuccess, width: "100%", padding: "15px", fontSize: "18px" }} 
+              onClick={() => { 
+                const np = { ...player!, arenaRulesSeen: true }; 
+                save(np); 
+                setArenaView("menu"); 
+              }}
+            >
+              ANLAŞILDI, ARENA'YA DÖN
+            </button>
           </div>
         </div>
       )}
@@ -1277,7 +1330,12 @@ export default function Game() {
               <p>🏆 Aktif oyuncu aranıyor...</p>
               <p>⏳ {searchTimeLeft} saniye sonra bot ile eşleşeceksin</p>
             </div>
-            <button style={{ ...S.btn, ...S.btnDanger, width: "100%", padding: "15px" }} onClick={handleCancelSearch}>❌ EŞLEŞTİRMEYİ İPTAL ET</button>
+            <button 
+              style={{ ...S.btn, ...S.btnDanger, width: "100%", padding: "15px" }} 
+              onClick={handleCancelSearch}
+            >
+              ❌ EŞLEŞTİRMEYİ İPTAL ET
+            </button>
           </div>
         </div>
       )}
