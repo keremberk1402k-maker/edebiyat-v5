@@ -102,18 +102,20 @@ type PvPState = {
   matchId: string | null;
   matchData: {
     id: string;
-    players: { host: string; guest: string | null };
+    players: { host: string; guest: string };
     state: {
       hostHp: number;
       guestHp: number;
       qIdx: number;
       qs: Q[];
       started: boolean;
-      questionStartTime?: number;
-      hostAnswer?: { correct: boolean; timestamp: number } | null;
-      guestAnswer?: { correct: boolean; timestamp: number } | null;
-      resolving?: boolean;
-      log?: string | null;
+      questionStartTime: number;
+      hostAnswerCorrect: number;   // -1: yok, 0: yanlış, 1: doğru
+      hostAnswerTime: number;
+      guestAnswerCorrect: number;
+      guestAnswerTime: number;
+      resolving: boolean;
+      log: string;
     };
     createdAt: number;
   } | null;
@@ -427,36 +429,34 @@ export default function Game() {
             if (k === pvp.matchId) continue;
             
             // Uygun maç bulundu mu?
-            if (m && m.players && !m.players.guest && m.players.host !== player.name) {
+            if (m && m.players && (!m.players.guest || m.players.guest === "") && m.players.host !== player.name) {
               console.log("🎮 Aday maç bulundu! ID:", k, "Host:", m.players.host);
               
-              // Maça katıl - guestHp ve started durumunu ayarla
               const guestHp = getStats(player).maxHp;
               await update(ref(db, `matches/${k}/players`), { guest: player.name });
               await update(ref(db, `matches/${k}/state`), {
                 guestHp,
                 started: true,
                 questionStartTime: Date.now(),
-                hostAnswer: null,
-                guestAnswer: null,
+                hostAnswerCorrect: -1,
+                hostAnswerTime: 0,
+                guestAnswerCorrect: -1,
+                guestAnswerTime: 0,
                 resolving: false,
               });
               
-              // Timer'ları durdur
               if (timer) clearInterval(timer);
               if (matchCheckInterval) clearInterval(matchCheckInterval);
               
               setIsSearching(false);
               
-              // Kendi maçını sil
               if (pvp.matchId) {
                 await set(ref(db, `matches/${pvp.matchId}`), null);
               }
               
-              // Maçı dinlemeye başla
               onValue(ref(db, `matches/${k}`), (snap2) => {
                 const val = snap2.val();
-                console.log("Maç güncellendi:", val);
+                if (!val) return;
                 setPvp(prev => ({ ...prev, matchData: val }));
               });
               
@@ -507,26 +507,27 @@ export default function Game() {
     }
     
     try {
-      // Önce kendi maçını oluştur
       const pool = QUESTIONS.slice();
-      const qs = shuffle(pool).slice(0, 30);
+      const qs = pool.slice().sort(() => Math.random() - 0.5).slice(0, 30);
       const newRef = push(ref(db, "matches"));
       const matchId = newRef.key!;
       
       const initialState = {
         id: matchId,
-        players: { host: player.name, guest: null },
+        players: { host: player.name, guest: "" },
         state: {
           hostHp: getStats(player).maxHp,
           guestHp: 0,
           qIdx: 0,
           qs,
           started: false,
-          questionStartTime: null,
-          hostAnswer: null,
-          guestAnswer: null,
+          questionStartTime: 0,
+          hostAnswerCorrect: -1,   // -1: cevap yok, 0: yanlış, 1: doğru
+          hostAnswerTime: 0,
+          guestAnswerCorrect: -1,
+          guestAnswerTime: 0,
           resolving: false,
-          log: null,
+          log: "",
         },
         createdAt: Date.now(),
       };
@@ -538,22 +539,21 @@ export default function Game() {
       const matchRef = ref(db, `matches/${matchId}`);
       onValue(matchRef, (snap) => {
         const val = snap.val();
-        console.log("Kendi maç güncellendi:", val);
+        if (!val) return;
+        console.log("Kendi maç güncellendi:", val?.players?.guest);
         setPvp(prev => ({ ...prev, matchData: val }));
         
-        // Guest katıldıysa battle'a git (started zaten guest tarafından set edildi)
-        if (val && val.players && val.players.guest && val.state && val.state.started) {
-          console.log("🎮 Rakip katıldı ve maç başladı!");
-          setIsSearching(false);
-        } else if (val && val.players && val.players.guest && val.state && !val.state.started) {
+        // Guest katıldıysa (guest boş string değil)
+        if (val.players?.guest && val.players.guest !== "" && !val.state?.started) {
           console.log("🎮 Rakip katıldı! Maç başlıyor...");
-          const guestHp = getStats(player).maxHp;
           update(ref(db, `matches/${matchId}/state`), { 
-            guestHp, 
+            guestHp: getStats(player).maxHp,
             started: true,
             questionStartTime: Date.now(),
-            hostAnswer: null,
-            guestAnswer: null,
+            hostAnswerCorrect: -1,
+            hostAnswerTime: 0,
+            guestAnswerCorrect: -1,
+            guestAnswerTime: 0,
             resolving: false,
           });
           notify("🎮 Rakip katıldı! Maç başlıyor!");
@@ -567,7 +567,7 @@ export default function Game() {
       
     } catch (error) {
       console.error("Maç oluşturma hatası:", error);
-      notify("Maç oluşturulamadı!");
+      notify("Maç oluşturulamadı: " + String(error));
     }
   };
 
@@ -664,127 +664,112 @@ export default function Game() {
     setScreen("battle");
   };
 
-  // PvP cevap gönder - EŞ ZAMANLI SİSTEM
+  // PvP cevap gönder - EŞ ZAMANLI SİSTEM (integer: -1=yok, 0=yanlış, 1=doğru)
   const handlePvPAnswer = async (selectedIndex: number) => {
     if (!pvp.matchId || !pvp.matchData || !player || !pvp.side) return;
-    
     const data = pvp.matchData;
-    if (!data.state || !data.state.started) return;
+    if (!data.state?.started || data.state.resolving) return;
     
-    // Zaten cevap verdiyse engelle
-    const myExistingAnswer = pvp.side === "host" ? data.state.hostAnswer : data.state.guestAnswer;
-    if (myExistingAnswer) return notify("Bu soruyu zaten cevapladın!");
+    const myCorrect = pvp.side === "host" ? data.state.hostAnswerCorrect : data.state.guestAnswerCorrect;
+    if (myCorrect !== -1) return notify("Bu soruyu zaten cevapladın!");
     
-    // Hesaplama yapılıyorsa engelle
-    if (data.state.resolving) return;
+    const q = data.state.qs[data.state.qIdx];
+    const correctVal = selectedIndex === q.a ? 1 : 0;
+    const now = Date.now();
     
-    const qIdx = data.state.qIdx;
-    const q = data.state.qs[qIdx];
-    const correct = selectedIndex === q.a;
-    const timestamp = Date.now();
+    const upd: any = pvp.side === "host"
+      ? { "state/hostAnswerCorrect": correctVal, "state/hostAnswerTime": now }
+      : { "state/guestAnswerCorrect": correctVal, "state/guestAnswerTime": now };
     
-    const answerField = pvp.side === "host" ? "state/hostAnswer" : "state/guestAnswer";
+    await update(ref(db, `matches/${pvp.matchId}`), upd);
     
-    // Cevabı kaydet
-    await update(ref(db, `matches/${pvp.matchId}`), {
-      [answerField]: { correct, timestamp }
-    });
-    
-    // Rakibin cevabını kontrol et
+    // 1.5 saniye sonra ikisi de cevap verdiyse hesapla
     setTimeout(async () => {
+      if (!pvp.matchId) return;
       const snap = await get(ref(db, `matches/${pvp.matchId}`));
-      const current = snap.val();
-      if (!current || !current.state) return;
+      const cur = snap.val();
+      if (!cur?.state || cur.state.resolving) return;
       
-      // Eğer resolving zaten başladıysa çık
-      if (current.state.resolving) return;
+      const hc = cur.state.hostAnswerCorrect ?? -1;
+      const gc = cur.state.guestAnswerCorrect ?? -1;
+      const bothAnswered = hc !== -1 && gc !== -1;
+      const elapsed = Date.now() - (cur.state.questionStartTime || Date.now());
       
-      const hostAnswer = current.state.hostAnswer;
-      const guestAnswer = current.state.guestAnswer;
+      if (!bothAnswered && elapsed < 20000) return;
       
-      // İkisi de cevap verdiyse veya süre dolmuşsa (20s) hesapla
-      const questionAge = Date.now() - (current.state.questionStartTime || Date.now());
-      const bothAnswered = hostAnswer && guestAnswer;
-      const timeExpired = questionAge >= 20000;
-      
-      if (!bothAnswered && !timeExpired) return; // Henüz bekle
-      
-      // Resolving bayrağı koy (çifte hesaplama önleme)
-      await update(ref(db, `matches/${pvp.matchId}/state`), { resolving: true });
-      
-      await resolvePvPRound(current, hostAnswer, guestAnswer);
-    }, 500);
+      // Sadece host resolve etsin
+      if (pvp.side === "host") {
+        await update(ref(db, `matches/${pvp.matchId}/state`), { resolving: true });
+        await resolvePvPRound(cur);
+      }
+    }, 1500);
   };
   
-  // PvP tur sonucu hesapla - kurallara göre
-  const resolvePvPRound = async (current: any, hostAnswer: any, guestAnswer: any) => {
+  // PvP tur sonucu hesapla
+  const resolvePvPRound = async (cur: any) => {
     if (!pvp.matchId || !player) return;
-    
     const pStats = getStats(player);
-    const updates: any = {};
-    let logMsg = "";
+    const upd: any = {};
     
-    const hostCorrect = hostAnswer?.correct ?? false;
-    const guestCorrect = guestAnswer?.correct ?? false;
-    const hostTime = hostAnswer?.timestamp ?? Infinity;
-    const guestTime = guestAnswer?.timestamp ?? Infinity;
+    const hc: number = cur.state.hostAnswerCorrect ?? -1;
+    const gc: number = cur.state.guestAnswerCorrect ?? -1;
+    const ht: number = cur.state.hostAnswerTime || 0;
+    const gt: number = cur.state.guestAnswerTime || 0;
+    let log = "";
     
-    if (!hostAnswer && !guestAnswer) {
-      // İkisi de cevap vermedi (süre doldu)
-      logMsg = "⏰ Süre doldu! Kimse cevap vermedi.";
-    } else if (hostCorrect && guestCorrect) {
-      // İkisi de doğru → hızlı olan hasar verir
-      if (hostTime < guestTime) {
-        updates["state/guestHp"] = Math.max(0, current.state.guestHp - pStats.atk);
-        logMsg = `⚡ ${current.players.host} daha hızlı! ${pStats.atk} hasar!`;
+    if (hc === -1 && gc === -1) {
+      log = "⏰ Süre doldu! Kimse cevap vermedi.";
+    } else if (hc === 1 && gc === 1) {
+      if (ht <= gt) {
+        upd["state/guestHp"] = Math.max(0, cur.state.guestHp - pStats.atk);
+        log = `⚡ ${cur.players.host} daha hızlı! ${pStats.atk} hasar!`;
       } else {
-        updates["state/hostHp"] = Math.max(0, current.state.hostHp - pStats.atk);
-        logMsg = `⚡ ${current.players.guest} daha hızlı! ${pStats.atk} hasar!`;
+        upd["state/hostHp"] = Math.max(0, cur.state.hostHp - pStats.atk);
+        log = `⚡ ${cur.players.guest} daha hızlı! ${pStats.atk} hasar!`;
       }
-    } else if (hostCorrect && !guestCorrect) {
-      // Sadece host doğru → guest'e hasar
-      updates["state/guestHp"] = Math.max(0, current.state.guestHp - pStats.atk);
-      logMsg = `✅ ${current.players.host} doğru! ${pStats.atk} hasar!`;
-    } else if (!hostCorrect && guestCorrect) {
-      // Sadece guest doğru → host'a hasar
-      updates["state/hostHp"] = Math.max(0, current.state.hostHp - pStats.atk);
-      logMsg = `✅ ${current.players.guest} doğru! ${pStats.atk} hasar!`;
+    } else if (hc === 1) {
+      upd["state/guestHp"] = Math.max(0, cur.state.guestHp - pStats.atk);
+      log = `✅ ${cur.players.host} doğru! ${pStats.atk} hasar!`;
+    } else if (gc === 1) {
+      upd["state/hostHp"] = Math.max(0, cur.state.hostHp - pStats.atk);
+      log = `✅ ${cur.players.guest} doğru! ${pStats.atk} hasar!`;
     } else {
-      // İkisi de yanlış → ikisine de 20 hasar
-      updates["state/hostHp"] = Math.max(0, current.state.hostHp - 20);
-      updates["state/guestHp"] = Math.max(0, current.state.guestHp - 20);
-      logMsg = "❌ İkisi de yanlış! İkisi de 20 hasar aldı.";
+      upd["state/hostHp"] = Math.max(0, cur.state.hostHp - 20);
+      upd["state/guestHp"] = Math.max(0, cur.state.guestHp - 20);
+      log = "❌ İkisi de yanlış! 20'şer hasar aldı.";
     }
     
-    // Sonraki soruya geç
-    updates["state/qIdx"] = (current.state.qIdx + 1) % current.state.qs.length;
-    updates["state/hostAnswer"] = null;
-    updates["state/guestAnswer"] = null;
-    updates["state/resolving"] = false;
-    updates["state/questionStartTime"] = Date.now();
-    updates["state/log"] = logMsg;
+    upd["state/qIdx"] = (cur.state.qIdx + 1) % cur.state.qs.length;
+    upd["state/hostAnswerCorrect"] = -1;
+    upd["state/hostAnswerTime"] = 0;
+    upd["state/guestAnswerCorrect"] = -1;
+    upd["state/guestAnswerTime"] = 0;
+    upd["state/resolving"] = false;
+    upd["state/questionStartTime"] = Date.now();
+    upd["state/log"] = log;
     
-    await update(ref(db, `matches/${pvp.matchId}`), updates);
+    await update(ref(db, `matches/${pvp.matchId}`), upd);
     
     // Zafer kontrolü
     const finalSnap = await get(ref(db, `matches/${pvp.matchId}`));
     const final = finalSnap.val();
-    if (final && final.state) {
-      if (final.state.guestHp <= 0 || final.state.hostHp <= 0) {
-        const winner = final.state.guestHp <= 0 ? final.players.host : final.players.guest;
+    if (final?.state) {
+      const hostDead = (upd["state/hostHp"] ?? cur.state.hostHp) <= 0;
+      const guestDead = (upd["state/guestHp"] ?? cur.state.guestHp) <= 0;
+      if (hostDead || guestDead) {
+        const winner = guestDead ? final.players.host : final.players.guest;
         if (winner === player.name) {
           notify("🏆 TEBRİKLER! KAZANDIN!");
           launchConfetti();
-          const np = { ...player };
-          np.gold += 500;
-          np.score += 200;
-          save(np);
+          save({ ...player, gold: player.gold + 500, score: player.score + 200 });
         } else {
-          notify("MAĞLUP OLDUN...");
+          notify("😔 MAĞLUP OLDUN...");
         }
         setTimeout(async () => {
-          await set(ref(db, `matches/${pvp.matchId}`), null);
-          handleLeaveMatch();
+          if (pvp.matchId) await set(ref(db, `matches/${pvp.matchId}`), null);
+          setPvp({ matchId: null, matchData: null, side: null });
+          setScreen("arena");
+          setArenaView("menu");
         }, 3000);
       }
     }
@@ -806,9 +791,8 @@ export default function Game() {
     const elapsed = Date.now() - (m.state.questionStartTime || Date.now());
     const remainingTimer = Math.max(0, 20 - Math.floor(elapsed / 1000));
     
-    // Benim cevabım var mı?
-    const myAnswer = isHost ? m.state.hostAnswer : m.state.guestAnswer;
-    const opponentAnswer = isHost ? m.state.guestAnswer : m.state.hostAnswer;
+    // Benim cevap durumum (-1=yok, 0=yanlış, 1=doğru)
+    const myAnswerVal = isHost ? m.state.hostAnswerCorrect : m.state.guestAnswerCorrect;
     
     setBattle({
       active: true,
@@ -821,49 +805,39 @@ export default function Game() {
       timer: remainingTimer,
       combo: 0,
       log: m.state.log || null,
-      wait: !!myAnswer, // Ben cevap verdim, rakip bekleniyor
+      wait: myAnswerVal !== -1, // Ben cevap verdim, rakip bekleniyor
       dmgText: null,
       shaking: false,
     });
     
-    // HP güncellendiğinde player HP'yi de güncelle
     setPlayer(prev => prev ? { ...prev, hp: myHp } : prev);
-    
     setScreen("battle");
   }, [pvp.matchData, player, pvp.side]);
 
-  // PvP soru süresi dolduğunda otomatik hesaplama
+  // PvP soru süresi dolduğunda otomatik hesaplama (sadece host tetikler)
   useEffect(() => {
-    if (!pvp.matchId || !pvp.matchData || !player || !pvp.side) return;
+    if (!pvp.matchId || !pvp.matchData || !pvp.side || pvp.side !== "host") return;
     const m = pvp.matchData;
-    if (!m.state || !m.state.started || m.state.resolving) return;
+    if (!m.state?.started || m.state.resolving) return;
     
-    const questionStartTime = m.state.questionStartTime || Date.now();
-    const elapsed = Date.now() - questionStartTime;
-    const remaining = 20000 - elapsed;
+    const remaining = 20000 - (Date.now() - (m.state.questionStartTime || Date.now()));
     
     if (remaining <= 0) {
-      // Süre zaten dolmuş - sadece host hesaplasın (çifte tetikleme önleme)
-      if (pvp.side === "host" && !m.state.resolving) {
-        update(ref(db, `matches/${pvp.matchId}/state`), { resolving: true })
-          .then(() => resolvePvPRound(m, m.state.hostAnswer || null, m.state.guestAnswer || null));
-      }
+      update(ref(db, `matches/${pvp.matchId}/state`), { resolving: true })
+        .then(() => resolvePvPRound(m));
       return;
     }
     
-    const timeout = setTimeout(async () => {
+    const t = setTimeout(async () => {
+      if (!pvp.matchId) return;
       const snap = await get(ref(db, `matches/${pvp.matchId}`));
-      const current = snap.val();
-      if (!current || !current.state || current.state.resolving) return;
-      
-      // Sadece host tetiklesin
-      if (pvp.side === "host") {
-        await update(ref(db, `matches/${pvp.matchId}/state`), { resolving: true });
-        await resolvePvPRound(current, current.state.hostAnswer || null, current.state.guestAnswer || null);
-      }
+      const cur = snap.val();
+      if (!cur?.state || cur.state.resolving) return;
+      await update(ref(db, `matches/${pvp.matchId}/state`), { resolving: true });
+      await resolvePvPRound(cur);
     }, remaining);
     
-    return () => clearTimeout(timeout);
+    return () => clearTimeout(t);
   }, [pvp.matchData?.state?.qIdx, pvp.matchData?.state?.questionStartTime]);
 
 
@@ -1443,8 +1417,8 @@ export default function Game() {
                   </div>
                   {(() => {
                     const isHost = pvp.side === "host";
-                    const myAnswer = pvp.matchData?.state ? (isHost ? pvp.matchData.state.hostAnswer : pvp.matchData.state.guestAnswer) : null;
-                    return myAnswer ? (
+                    const myAns = pvp.matchData?.state ? (isHost ? pvp.matchData.state.hostAnswerCorrect : pvp.matchData.state.guestAnswerCorrect) : -1;
+                    return myAns !== -1 ? (
                       <div style={{ color: "#fc0", marginTop: "8px", fontSize: "14px" }}>⏳ Rakip bekleniyor...</div>
                     ) : (
                       <div style={{ color: "#0f6", marginTop: "8px", fontSize: "14px", animation: "pulse 1s infinite" }}>🎯 Hızlı cevapla!</div>
@@ -1478,23 +1452,23 @@ export default function Game() {
                 <div style={{ display: "flex", justifyContent: "center", gap: "20px", marginBottom: "14px" }}>
                   {(() => {
                     const isHost = pvp.side === "host";
-                    const myAnswer = isHost ? pvp.matchData.state.hostAnswer : pvp.matchData.state.guestAnswer;
-                    const oppAnswer = isHost ? pvp.matchData.state.guestAnswer : pvp.matchData.state.hostAnswer;
+                    const myAns = isHost ? pvp.matchData.state.hostAnswerCorrect : pvp.matchData.state.guestAnswerCorrect;
+                    const oppAns = isHost ? pvp.matchData.state.guestAnswerCorrect : pvp.matchData.state.hostAnswerCorrect;
                     return (
                       <>
                         <div style={{ 
                           padding: "6px 14px", borderRadius: "8px", fontSize: "13px", fontWeight: "700",
-                          background: myAnswer ? "rgba(0,255,100,0.2)" : "rgba(255,255,255,0.08)",
-                          border: `1px solid ${myAnswer ? "#0f6" : "#444"}`
+                          background: myAns !== -1 ? "rgba(0,255,100,0.2)" : "rgba(255,255,255,0.08)",
+                          border: `1px solid ${myAns !== -1 ? "#0f6" : "#444"}`
                         }}>
-                          {myAnswer ? "✅ Sen cevapladın" : "⏳ Senin sıran..."}
+                          {myAns !== -1 ? "✅ Sen cevapladın" : "⏳ Senin sıran..."}
                         </div>
                         <div style={{ 
                           padding: "6px 14px", borderRadius: "8px", fontSize: "13px", fontWeight: "700",
-                          background: oppAnswer ? "rgba(255,100,0,0.2)" : "rgba(255,255,255,0.08)",
-                          border: `1px solid ${oppAnswer ? "#f60" : "#444"}`
+                          background: oppAns !== -1 ? "rgba(255,100,0,0.2)" : "rgba(255,255,255,0.08)",
+                          border: `1px solid ${oppAns !== -1 ? "#f60" : "#444"}`
                         }}>
-                          {oppAnswer ? "✅ Rakip cevapladı" : "⏳ Rakip düşünüyor..."}
+                          {oppAns !== -1 ? "✅ Rakip cevapladı" : "⏳ Rakip düşünüyor..."}
                         </div>
                       </>
                     );
@@ -1504,8 +1478,8 @@ export default function Game() {
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
                   {pvp.matchData.state.qs[pvp.matchData.state.qIdx].o.map((o: string, i: number) => {
                     const isHost = pvp.side === "host";
-                    const myAnswer = isHost ? pvp.matchData!.state.hostAnswer : pvp.matchData!.state.guestAnswer;
-                    const isAnswered = !!myAnswer || pvp.matchData!.state.resolving;
+                    const myAns = isHost ? pvp.matchData!.state.hostAnswerCorrect : pvp.matchData!.state.guestAnswerCorrect;
+                    const isAnswered = myAns !== -1 || pvp.matchData!.state.resolving;
                     return (
                       <button 
                         key={i} 
