@@ -334,8 +334,8 @@ export default function Game() {
   // ── NORMAL SAVAŞ ─────────────────────────────────────────────────────────
   const startBattle = (r:Region,l:Level) => {
     playSound("click"); setModal(null); setBotMatch(false); setTurn("p1");
-    let pool=QUESTIONS.slice();
-    if(r.type!=="all") pool=QUESTIONS.filter(q=>q.topic===r.type||q.topic==="genel");
+    let pool=allQuestions.length>0?allQuestions:DEFAULT_QUESTIONS.slice();
+    if(r.type!=="all") pool=allQuestions.length>0?allQuestions:DEFAULT_QUESTIONS.filter(q=>q.topic===r.type||q.topic==="genel");
     setBattle({active:true,region:r,level:l,enemyHp:l.hp,maxEnemyHp:l.hp,qs:shuffle(pool).slice(0,15),qIdx:0,timer:20,combo:0,log:null,wait:false,dmgText:null,shaking:false});
     setScreen("battle");
   };
@@ -488,7 +488,7 @@ export default function Game() {
   const findMatch = async () => {
     if(!player) return notify("Önce giriş yapmalısın!");
     try {
-      const qs  = shuffle(QUESTIONS).slice(0,30);
+      const qs  = shuffle(allQuestions.length>0?allQuestions:DEFAULT_QUESTIONS).slice(0,30);
       const nr  = push(ref(db,"matches"));
       const mid = nr.key!;
       const initState:MatchState = {
@@ -758,7 +758,7 @@ export default function Game() {
       region:{id:"arena",name:"ARENA",x:0,y:0,type:"all",bg:ARENA_BG,unlockC:"king",levels:[]},
       level:{id:"pvp-bot",t:"Bot Arena",hp:stats.maxHp,en:"🤖 Bot Rakip",ico:"🤖",diff:"Arena"},
       enemyHp:stats.maxHp, maxEnemyHp:stats.maxHp,
-      qs:shuffle(QUESTIONS).slice(0,25), qIdx:0, timer:20, combo:0,
+      qs:shuffle(allQuestions.length>0?allQuestions:DEFAULT_QUESTIONS).slice(0,25), qIdx:0, timer:20, combo:0,
       log:"🤖 Bot ile savaş başlıyor!", wait:false, dmgText:null, shaking:false,
     });
     setScreen("battle");
