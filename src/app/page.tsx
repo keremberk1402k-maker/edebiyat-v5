@@ -391,7 +391,7 @@ export default function Game() {
               const np2={...player!};np2.gold+=100;np2.xp+=30;np2.score+=50;np2.hp=pStats.maxHp;
               const oldAS=np2.arenaScore||0; const newAS=oldAS+100;
               const ol=getLeague(oldAS); const nl=getLeague(newAS);
-              if(nl.name!==ol.name) notify(\`🎉 TERFİ! \${nl.icon} \${nl.name} Ligine çıktın!\`);
+              if(nl.name!==ol.name) notify(`🎉 TERFİ! ${nl.icon} ${nl.name} Ligine çıktın!`);
               else notify("🏆 BOT YENİLDİ! +100 Arena Puan");
               np2.arenaScore=newAS; np2.arenaGames=(np2.arenaGames||0)+1;
               save(np2);setScreen("menu");return;
@@ -1475,9 +1475,9 @@ export default function Game() {
                       <button style={{...S.btn,...S.btnDanger,padding:"4px 10px",fontSize:"11px"}}
                         onClick={async()=>{
                           if(!confirm(`"${k}" silinsin mi?`)) return;
-                          await set(ref(db,\`users/\${k}\`),null);
+                          await set(ref(db,"users/"+k),null);
                           localStorage.removeItem(SAVE_KEY+k);
-                          notify(\`\${k} silindi!\`);
+                          notify(`${k} silindi!`);
                           loadAdminUsers();
                         }}>Sil</button>
                     </div>
