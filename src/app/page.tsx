@@ -28,7 +28,7 @@ type Player = {
   name:string; pass:string; hp:number; maxHp:number; gold:number; xp:number; maxXp:number; lvl:number;
   inventory:Item[]; equipped:{wep:Item|null;arm:Item|null}; jokers:{[k:string]:number};
   mistakes:string[]; score:number; unlockedRegions:string[]; regionProgress:{[k:string]:number};
-  unlockedCostumes:string[]; currentCostume:string; tutorialSeen:boolean; arenaRulesSeen?:boolean;
+  unlockedCostumes:string[]; currentCostume:string; tutorialSeen:boolean; arenaRulesSeen?:boolean; arenaScore?:number; arenaGames?:number;
 };
 type BattleState = {
   active:boolean; region?:Region; level?:Level; enemyHp:number; maxEnemyHp:number;
