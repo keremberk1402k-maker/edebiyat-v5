@@ -1483,20 +1483,22 @@ export default function Game() {
 
       {/* ── ADMİN PANELİ ── */}
       {screen==="admin"&&isAdmin(player!.name)&&(
-        <div style={{flex:1,overflowY:"auto",padding:"20px",background:"rgba(10,0,0,0.95)"}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"20px"}}>
-            <h1 style={{...S.neon("#f05"),margin:0}}>🔧 ADMİN PANELİ</h1>
-            <button style={{...S.btn,...S.btnDanger}} onClick={()=>setScreen("menu")}>← GERİ</button>
-          </div>
+        <div style={{flex:1,overflowY:"auto",WebkitOverflowScrolling:"touch",padding:isMobile?"10px":"20px",background:"rgba(10,0,0,0.95)"}}>
 
-          {/* Tab butonları */}
-          <div style={{display:"flex",gap:"10px",marginBottom:"20px"}}>
-            {(["users","questions","system"] as const).map(tab=>(
-              <button key={tab} style={{...S.btn,background:adminTab===tab?"#f05":"rgba(255,255,255,0.08)",fontSize:"13px"}}
-                onClick={()=>{ setAdminTab(tab); if(tab==="users") loadAdminUsers(); }}>
-                {tab==="users"?"👥 Kullanıcılar":tab==="questions"?"📝 Sorular":"⚙️ Sistem"}
-              </button>
-            ))}
+          {/* Sticky başlık + tablar */}
+          <div style={{position:"sticky",top:0,zIndex:10,background:"rgba(10,0,0,0.97)",paddingBottom:"10px",marginBottom:"12px",borderBottom:"1px solid rgba(255,0,80,0.3)"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"10px"}}>
+              <h1 style={{...S.neon("#f05"),margin:0,fontSize:isMobile?"18px":"24px"}}>🔧 ADMİN PANELİ</h1>
+              <button style={{...S.btn,...S.btnDanger,fontSize:"12px",padding:"8px 12px"}} onClick={()=>setScreen("menu")}>← GERİ</button>
+            </div>
+            <div style={{display:"flex",gap:"6px"}}>
+              {(["users","questions","system"] as const).map(tab=>(
+                <button key={tab} style={{...S.btn,flex:1,background:adminTab===tab?"#f05":"rgba(255,255,255,0.08)",fontSize:isMobile?"11px":"12px",padding:isMobile?"8px 4px":"8px 10px"}}
+                  onClick={()=>{ setAdminTab(tab); if(tab==="users") loadAdminUsers(); }}>
+                  {tab==="users"?"👥 Kişiler":tab==="questions"?"📝 Sorular":"⚙️ Sistem"}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* KULLANICILAR */}
@@ -1506,7 +1508,7 @@ export default function Game() {
                 <h2 style={{color:"#fc0",margin:0}}>👥 Tüm Kullanıcılar ({Object.keys(adminUsers).length})</h2>
                 <button style={{...S.btn,background:"rgba(255,255,255,0.1)",fontSize:"12px"}} onClick={loadAdminUsers}>🔄 Yenile</button>
               </div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:"12px"}}>
+              <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(auto-fill,minmax(280px,1fr))",gap:"12px"}}>
                 {Object.keys(adminUsers).filter(k=>!isAdmin(k)).map(k=>{
                   const u=adminUsers[k];
                   const league=getLeague(u.arenaScore||0);
