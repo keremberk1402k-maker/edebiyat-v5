@@ -138,6 +138,7 @@ const isAdmin = (name:string) => ["ADMIN","ADMIN2","ADMIN3"].includes(name);
 // ─── BILEŞEN ────────────────────────────────────────────────────────────────
 export default function Game() {
   const [screen,    setScreen]    = useState<"auth"|"menu"|"battle"|"map"|"shop"|"inv"|"arena"|"admin">("auth");
+  const [platform,  setPlatform]  = useState<"mobile"|"pc"|null>(null);
   const [player,    setPlayer]    = useState<Player|null>(null);
   const [auth,      setAuth]      = useState({ user:"", pass:"", reg:false });
   const [battle,    setBattle]    = useState<BattleState>({ active:false, enemyHp:0, maxEnemyHp:0, qs:[], qIdx:0, timer:20, combo:0, log:null, wait:false, dmgText:null, shaking:false });
@@ -801,7 +802,10 @@ export default function Game() {
   // ═══════════════════════════════════════════════════════════════════════
   // RENDER
   // ═══════════════════════════════════════════════════════════════════════
+  const isMobile = platform === "mobile";
   const globalStyles=`
+    * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+    input, button, select { font-family: inherit; }
     @keyframes pulse{0%{transform:scale(1)}50%{transform:scale(1.04)}100%{transform:scale(1)}}
     @keyframes float{0%{transform:translateX(-50%) translateY(0);opacity:1}100%{transform:translateX(-50%) translateY(-60px);opacity:0}}
     @keyframes spin{to{transform:rotate(360deg)}}
@@ -816,6 +820,37 @@ export default function Game() {
 
   if(!mounted) return <div style={{height:"100vh",background:"#000"}}/>;
 
+  // Platform seçimi
+  if(!platform) return (
+    <div style={{height:"100vh",background:"radial-gradient(circle at center,#1a1a2e,#000)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontFamily:"Segoe UI,sans-serif",color:"white",padding:"20px"}}>
+      <style>{`@keyframes pulse{0%{transform:scale(1)}50%{transform:scale(1.04)}100%{transform:scale(1)}}`}</style>
+      <div style={{textAlign:"center",marginBottom:"40px"}}>
+        <div style={{fontSize:"60px",marginBottom:"16px"}}>📚</div>
+        <h1 style={{fontSize:"clamp(28px,8vw,48px)",fontWeight:"800",margin:"0 0 8px",color:"#00eaff",textShadow:"0 0 20px #00eaff"}}>EDEBİYAT EFSANELERİ</h1>
+        <p style={{color:"#aaa",fontSize:"clamp(14px,3vw,18px)",margin:0}}>Lütfen platformunuzu seçin</p>
+      </div>
+      <div style={{display:"flex",gap:"20px",flexWrap:"wrap",justifyContent:"center"}}>
+        <button
+          onClick={()=>{ localStorage.setItem("edb_platform","mobile"); setPlatform("mobile"); }}
+          style={{background:"linear-gradient(135deg,#f7971e,#ffd200)",border:"none",color:"#000",padding:"24px 40px",borderRadius:"20px",cursor:"pointer",fontWeight:"800",fontSize:"clamp(16px,4vw,22px)",display:"flex",flexDirection:"column",alignItems:"center",gap:"10px",boxShadow:"0 10px 30px rgba(255,200,0,0.3)",minWidth:"160px",transition:"transform 0.2s"}}
+          onMouseOver={e=>(e.currentTarget.style.transform="scale(1.05)")}
+          onMouseOut={e=>(e.currentTarget.style.transform="scale(1)")}>
+          <span style={{fontSize:"clamp(36px,10vw,52px)"}}>📱</span>
+          MOBİL
+        </button>
+        <button
+          onClick={()=>{ localStorage.setItem("edb_platform","pc"); setPlatform("pc"); }}
+          style={{background:"linear-gradient(135deg,#00c6ff,#0072ff)",border:"none",color:"white",padding:"24px 40px",borderRadius:"20px",cursor:"pointer",fontWeight:"800",fontSize:"clamp(16px,4vw,22px)",display:"flex",flexDirection:"column",alignItems:"center",gap:"10px",boxShadow:"0 10px 30px rgba(0,114,255,0.3)",minWidth:"160px",transition:"transform 0.2s"}}
+          onMouseOver={e=>(e.currentTarget.style.transform="scale(1.05)")}
+          onMouseOut={e=>(e.currentTarget.style.transform="scale(1)")}>
+          <span style={{fontSize:"clamp(36px,10vw,52px)"}}>🖥️</span>
+          BİLGİSAYAR
+        </button>
+      </div>
+      <p style={{color:"#555",fontSize:"12px",marginTop:"30px"}}>Bu seçim daha sonra ayarlardan değiştirilebilir</p>
+    </div>
+  );
+
   // Bakım modu kontrolü - admin değilse engelle
   if(gameLocked && player && !isAdmin(player.name)) return (
     <div style={{height:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"#0a0a0f",color:"white",padding:"40px",textAlign:"center"}}>
@@ -829,21 +864,37 @@ export default function Game() {
 
   // ── AUTH ekranı ──────────────────────────────────────────────────────────
   if(screen==="auth") return (
-    <div style={{height:"100vh",background:"#000",display:"flex",justifyContent:"center",alignItems:"center",fontFamily:"sans-serif"}}>
+    <div style={{minHeight:"100vh",background:"radial-gradient(circle at center,#1a1a2e,#000)",display:"flex",justifyContent:"center",alignItems:"center",fontFamily:"Segoe UI,sans-serif",padding:"20px",boxSizing:"border-box"}}>
       <style>{globalStyles}</style>
-      <div style={{...S.glass,padding:"40px",width:"420px",textAlign:"center"}}>
-        <h1 style={{...S.neon("#00eaff"),fontSize:"44px",marginBottom:"20px"}}>EDEBİYAT<br/>EFSANELERİ</h1>
-        <input style={{width:"100%",padding:"12px",marginBottom:"12px",borderRadius:"10px",border:"none",background:"rgba(255,255,255,0.06)",color:"white",boxSizing:"border-box"}} placeholder="Kullanıcı Adı" value={auth.user} onChange={e=>setAuth({...auth,user:e.target.value})} onKeyDown={e=>e.key==="Enter"&&handleAuth()}/>
-        <input type="password" style={{width:"100%",padding:"12px",marginBottom:"18px",borderRadius:"10px",border:"none",background:"rgba(255,255,255,0.06)",color:"white",boxSizing:"border-box"}} placeholder="Şifre" value={auth.pass} onChange={e=>setAuth({...auth,pass:e.target.value})} onKeyDown={e=>e.key==="Enter"&&handleAuth()}/>
-        <button style={{...S.btn,...S.btnSuccess,width:"100%",fontSize:"16px"}} onClick={handleAuth}>{auth.reg?"KAYIT OL":"GİRİŞ YAP"}</button>
-        <p style={{marginTop:"16px",cursor:"pointer",color:"#aaa"}} onClick={()=>setAuth({...auth,reg:!auth.reg})}>{auth.reg?"Giriş Yap":"Kayıt Ol"}</p>
-        {notif&&<div style={{color:"#f05",marginTop:"12px",fontWeight:"bold"}}>{notif}</div>}
+      <div style={{...S.glass,padding:isMobile?"28px 20px":"40px",width:"100%",maxWidth:"420px",textAlign:"center"}}>
+        <div style={{fontSize:isMobile?"40px":"52px",marginBottom:"8px"}}>📚</div>
+        <h1 style={{...S.neon("#00eaff"),fontSize:isMobile?"28px":"40px",marginBottom:"6px",lineHeight:1.2}}>EDEBİYAT<br/>EFSANELERİ</h1>
+        <p style={{color:"#666",fontSize:"12px",marginBottom:"24px"}}>
+          Platform: {platform==="mobile"?"📱 Mobil":"🖥️ PC"} •
+          <span style={{cursor:"pointer",color:"#0072ff",marginLeft:"4px"}} onClick={()=>{ localStorage.removeItem("edb_platform"); setPlatform(null); }}>Değiştir</span>
+        </p>
+        <input style={{width:"100%",padding:isMobile?"14px":"12px",marginBottom:"12px",borderRadius:"10px",border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.06)",color:"white",boxSizing:"border-box",fontSize:isMobile?"16px":"14px"}}
+          placeholder="Kullanıcı Adı" value={auth.user}
+          onChange={e=>setAuth({...auth,user:e.target.value})}
+          onKeyDown={e=>e.key==="Enter"&&handleAuth()}/>
+        <input type="password"
+          style={{width:"100%",padding:isMobile?"14px":"12px",marginBottom:"20px",borderRadius:"10px",border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.06)",color:"white",boxSizing:"border-box",fontSize:isMobile?"16px":"14px"}}
+          placeholder="Şifre" value={auth.pass}
+          onChange={e=>setAuth({...auth,pass:e.target.value})}
+          onKeyDown={e=>e.key==="Enter"&&handleAuth()}/>
+        <button style={{...S.btn,...S.btnSuccess,width:"100%",fontSize:isMobile?"17px":"16px",padding:isMobile?"16px":"13px"}} onClick={handleAuth}>
+          {auth.reg?"KAYIT OL":"GİRİŞ YAP"}
+        </button>
+        <p style={{marginTop:"16px",cursor:"pointer",color:"#aaa",fontSize:"14px"}} onClick={()=>setAuth({...auth,reg:!auth.reg})}>
+          {auth.reg?"Zaten hesabın var mı? Giriş Yap":"Hesabın yok mu? Kayıt Ol"}
+        </p>
+        {notif&&<div style={{color:"#f05",marginTop:"12px",fontWeight:"bold",fontSize:"14px"}}>{notif}</div>}
       </div>
     </div>
   );
 
   return (
-    <div style={{height:"100vh",background:"radial-gradient(circle at center,#1a1a2e,#000)",color:"white",fontFamily:"Segoe UI,sans-serif",overflow:"hidden",display:"flex",flexDirection:"column"}}>
+    <div style={{height:"100vh",background:"radial-gradient(circle at center,#1a1a2e,#000)",color:"white",fontFamily:"Segoe UI,sans-serif",overflow:"hidden",display:"flex",flexDirection:"column",fontSize:isMobile?"15px":"14px"}}>
       <style>{globalStyles}</style>
       <canvas ref={confettiRef} style={{position:"fixed",inset:0,pointerEvents:"none",zIndex:9999}}/>
 
@@ -874,7 +925,7 @@ export default function Game() {
               <div style={{display:"flex",justifyContent:"space-between"}}><span>🛡️ Can</span><span style={{color:"#0f6",fontWeight:"700"}}>{getStats(player!).maxHp}</span></div>
             </div>
           </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"20px",width:"620px"}}>
+          <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr 1fr":"1fr 1fr",gap:isMobile?"12px":"20px",width:isMobile?"100%":"620px",maxWidth:"620px",padding:isMobile?"0 12px":"0"}}>
             {isAdmin(player!.name)&&(
               <div onClick={()=>{loadAdminUsers();setScreen("admin");}}
                 style={{...S.glass,height:"210px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",cursor:"pointer",border:"1px solid #f05",background:"rgba(30,0,0,0.84)",gridColumn:"1/-1"}}>
@@ -884,7 +935,7 @@ export default function Game() {
             )}
             {[{id:"map",t:"MACERA",i:"🗺️",c:"#fc0"},{id:"arena",t:"ARENA",i:"⚔️",c:"#f05"},{id:"shop",t:"MARKET",i:"🛒",c:"#0f6"},{id:"inv",t:"ÇANTA",i:"🎒",c:"#00eaff"}].map(m=>(
               <div key={m.id} onClick={()=>{playSound("click");if(m.id==="arena")goToArena();else setScreen(m.id as any);}}
-                style={{...S.glass,height:"210px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",cursor:"pointer",border:`1px solid ${m.c}`,background:"rgba(20,20,30,0.84)"}}>
+                style={{...S.glass,height:isMobile?"140px":"210px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",cursor:"pointer",border:`1px solid ${m.c}`,background:"rgba(20,20,30,0.84)"}}>
                 <div style={{fontSize:"64px",marginBottom:"14px"}}>{m.i}</div>
                 <div style={{...S.neon(m.c),fontSize:"20px",fontWeight:"800"}}>{m.t}</div>
               </div>
@@ -952,10 +1003,10 @@ export default function Game() {
 
             {/* ── ARENA MENU ── */}
             {arenaScreen==="menu"&&(
-              <div style={{display:"flex",gap:"24px",alignItems:"flex-start",flexWrap:"wrap",justifyContent:"center",width:"100%",maxWidth:"900px"}}>
+              <div style={{display:"flex",gap:isMobile?"12px":"24px",alignItems:"flex-start",flexWrap:"wrap",justifyContent:"center",width:"100%",maxWidth:"900px",padding:isMobile?"0 8px":"0"}}>
 
                 {/* Sol: Sıralama + Lig Haritası */}
-                <div style={{...S.glass,padding:"20px",width:"340px",minWidth:"300px"}}>
+                <div style={{...S.glass,padding:isMobile?"14px":"20px",width:isMobile?"100%":"340px",minWidth:isMobile?"0":"300px"}}>
                   {/* Sekme */}
                   <div style={{display:"flex",gap:"6px",marginBottom:"16px"}}>
                     {(["siralama","liglar"] as const).map(t=>(
@@ -1076,7 +1127,7 @@ export default function Game() {
                 </div>
 
                 {/* Sağ: Butonlar */}
-                <div style={{...S.glass,padding:"32px",width:"340px",minWidth:"300px",display:"flex",flexDirection:"column",gap:"14px",alignItems:"stretch"}}>
+                <div style={{...S.glass,padding:isMobile?"16px":"32px",width:isMobile?"100%":"340px",minWidth:isMobile?"0":"300px",display:"flex",flexDirection:"column",gap:"12px",alignItems:"stretch"}}>
                   <h2 style={{...S.neon("#f05"),margin:"0 0 8px",textAlign:"center",fontSize:"26px"}}>⚔️ ARENA</h2>
                   {(()=>{
                     const myScore=player?.arenaScore||0;
@@ -1206,12 +1257,12 @@ export default function Game() {
       {/* ── BATTLE EKRANI ── */}
       {screen==="battle"&&(
         <div style={{flex:1,display:"flex",flexDirection:"column",background:`linear-gradient(rgba(0,0,0,0.6),rgba(0,0,0,0.9)),url(${battle.region?.bg||""}) center/cover`}}>
-          <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"space-around",position:"relative"}}>
+          <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"space-around",position:"relative",flexWrap:isMobile?"wrap":"nowrap",gap:isMobile?"4px":"0",padding:isMobile?"8px 4px":"0"}}>
             {battle.dmgText&&<div className="floating-dmg" style={{top:"38%",color:battle.dmgText.c}}>{battle.dmgText.val}</div>}
 
             {/* Düşman */}
             <div style={{textAlign:"center"}}>
-              <div style={{fontSize:"120px",filter:"drop-shadow(0 0 30px #f05)"}}>{battle.level?.ico}</div>
+              <div style={{fontSize:isMobile?"64px":"120px",filter:"drop-shadow(0 0 20px #f05)"}}>{battle.level?.ico}</div>
               <div style={{...S.glass,padding:"10px 20px",marginTop:"10px",display:"inline-block",minWidth:"160px"}}>
                 <div style={{fontWeight:"800",fontSize:"16px"}}>{battle.level?.en}</div>
                 {(()=>{
@@ -1228,7 +1279,7 @@ export default function Game() {
                         {getLeague(0).icon} Arena Rakibi
                       </div>
                     )}
-                    <div style={{...S.bar,width:"160px"}}>
+                    <div style={{...S.bar,width:isMobile?"120px":"160px"}}>
                       <div style={{width:`${Math.max(0,pct*100)}%`,height:"100%",
                         background: pct>0.5?"linear-gradient(90deg,#f05,#ff8)":pct>0.25?"linear-gradient(90deg,#f80,#fc0)":"linear-gradient(90deg,#f00,#f55)",
                         transition:"width 0.5s ease"
@@ -1279,13 +1330,13 @@ export default function Game() {
 
             {/* Oyuncu */}
             <div style={{textAlign:"center"}}>
-              <div style={{fontSize:"120px",filter:"drop-shadow(0 0 30px #00eaff)"}}>{COSTUMES[player!.currentCostume].i}</div>
+              <div style={{fontSize:isMobile?"64px":"120px",filter:"drop-shadow(0 0 20px #00eaff)"}}>{COSTUMES[player!.currentCostume].i}</div>
               <div style={{...S.glass,padding:"10px 20px",marginTop:"10px",display:"inline-block",minWidth:"160px"}}>
                 <div style={{fontWeight:"800",fontSize:"16px"}}>{player?.name}</div>
                 <div style={{fontSize:"11px",color:getLeague(player?.arenaScore||0).color,marginBottom:"4px"}}>
                   {getLeague(player?.arenaScore||0).icon} {getLeague(player?.arenaScore||0).name}
                 </div>
-                <div style={{...S.bar,width:"160px"}}>
+                <div style={{...S.bar,width:isMobile?"120px":"160px"}}>
                   <div style={{width:`${Math.max(0,(player!.hp/getStats(player!).maxHp)*100)}%`,height:"100%",
                     background: player!.hp/getStats(player!).maxHp>0.5?"linear-gradient(90deg,#0f6,#00eaff)":
                       player!.hp/getStats(player!).maxHp>0.25?"linear-gradient(90deg,#fc0,#f80)":"linear-gradient(90deg,#f00,#f55)",
@@ -1301,7 +1352,7 @@ export default function Game() {
           </div>
 
           {/* Soru kutusu */}
-          <div style={{...S.glass,margin:"22px",padding:"22px",border:"1px solid #00eaff",minHeight:"260px",display:"flex",flexDirection:"column",justifyContent:"center"}}>
+          <div style={{...S.glass,margin:isMobile?"8px":"22px",padding:isMobile?"14px":"22px",border:"1px solid #00eaff",display:"flex",flexDirection:"column",justifyContent:"center"}}>
             {pvp.matchId&&pvp.matchData?.state?.started ? (
               <>
                 {/* PvP durum göstergesi */}
@@ -1343,7 +1394,7 @@ export default function Game() {
                     if(myAns!==-1 && isCorrectBtn){ bg="linear-gradient(135deg,#11998e,#38ef7d)"; brd="2px solid #0f6"; sc="scale(1.04)"; }
                     return(
                       <button key={i}
-                        style={{...S.btn,padding:"14px",fontSize:15,width:"100%",textTransform:"none",
+                        style={{...S.btn,padding:isMobile?"10px":"14px",fontSize:isMobile?13:15,width:"100%",textTransform:"none",
                           background:bg, border:brd, transform:sc,
                           transition:"all 0.25s ease",
                           opacity:disabled&&!isCorrectBtn?0.45:1,
@@ -1370,7 +1421,7 @@ export default function Game() {
               </>
             ) : (
               <>
-                <div style={{textAlign:"center",marginBottom:"18px",fontSize:"22px",fontWeight:"800",color:"#fff"}}>
+                <div style={{textAlign:"center",marginBottom:isMobile?"12px":"18px",fontSize:isMobile?"16px":"22px",fontWeight:"800",color:"#fff"}}>
                   {battle.qs[battle.qIdx]?.q||"Yükleniyor..."}
                 </div>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"14px"}}>
@@ -1387,7 +1438,7 @@ export default function Game() {
                     const disabled = !!showAnswer;
                     return(
                       <button key={i}
-                        style={{...S.btn,padding:"14px",fontSize:15,width:"100%",textTransform:"none",
+                        style={{...S.btn,padding:isMobile?"10px":"14px",fontSize:isMobile?13:15,width:"100%",textTransform:"none",
                           background:bg, border, transform:scale,
                           transition:"all 0.25s ease",
                           opacity:disabled&&!isCorrect&&!isChosen?0.5:1,
@@ -1666,7 +1717,7 @@ export default function Game() {
               </div>
             </div>
           )}
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:"18px"}}>
+          <div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(auto-fit,minmax(150px,1fr))":"repeat(auto-fit,minmax(200px,1fr))",gap:"18px"}}>
             {screen==="shop"?(
               <>
                 {Object.values(ITEMS).filter(it=>it.type!=="joker").map(it=>(
