@@ -758,8 +758,8 @@ export default function Game() {
       const isHost=side==="host";
       try {
         const terkLog = isHost
-          ? `🏳️ Host terk etti! ${cur.players?.guest||"Rakip"} KAZANDI!`
-          : `🏳️ Guest terk etti! ${cur.players?.host||"Rakip"} KAZANDI!`;
+          ? `🏳️ Host terk etti! ${matchData.players?.guest||"Rakip"} KAZANDI!`
+          : `🏳️ Guest terk etti! ${matchData.players?.host||"Rakip"} KAZANDI!`;
         await update(ref(db,`matches/${matchId}/state`),{
           ...(isHost ? {hostHp:0} : {guestHp:0}),
           log: terkLog,
