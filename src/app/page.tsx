@@ -154,7 +154,7 @@ export default function Game() {
   // Admin panel states
   const [adminUsers,    setAdminUsers]    = useState<{[k:string]:any}>({});
   const [adminQuestion, setAdminQuestion] = useState({ q:"", o:["","","",""], a:0, topic:"genel" });
-  const [adminTab,      setAdminTab]      = useState<"users"|"questions"|"matches"|"system">("users");
+  const [adminTab,      setAdminTab]      = useState<"users"|"questions"|"system">("users");
   const [allQuestions,   setAllQuestions]   = useState<(Q&{fbKey?:string})[]>([]);
   const [editingQ,       setEditingQ]       = useState<(Q&{fbKey?:string})|null>(null);
   const [customQs,       setCustomQs]       = useState<Q[]>([]); // artık kullanılmıyor, allQuestions var
@@ -1373,10 +1373,10 @@ export default function Game() {
 
           {/* Tab butonları */}
           <div style={{display:"flex",gap:"10px",marginBottom:"20px"}}>
-            {(["users","questions","matches","system"] as const).map(tab=>(
+            {(["users","questions","system"] as const).map(tab=>(
               <button key={tab} style={{...S.btn,background:adminTab===tab?"#f05":"rgba(255,255,255,0.08)",fontSize:"13px"}}
                 onClick={()=>{ setAdminTab(tab); if(tab==="users") loadAdminUsers(); }}>
-                {tab==="users"?"👥 Kullanıcılar":tab==="questions"?"📝 Sorular":tab==="matches"?"⚔️ Maçlar":"⚙️ Sistem"}
+                {tab==="users"?"👥 Kullanıcılar":tab==="questions"?"📝 Sorular":"⚙️ Sistem"}
               </button>
             ))}
           </div>
@@ -1548,28 +1548,7 @@ export default function Game() {
             </div>
           )}
 
-          {/* MAÇLAR */}
-          {adminTab==="matches"&&(
-            <div>
-              <h2 style={{color:"#fc0",marginTop:0}}>⚔️ Aktif Maçlar</h2>
-              <button style={{...S.btn,marginBottom:"16px"}} onClick={async()=>{
-                const snap=await get(ref(db,"matches"));
-                const all=snap.val()||{};
-                setAdminUsers(prev=>({...prev,__matches__:all}));
-              }}>🔄 Maçları Yükle</button>
-              {adminUsers.__matches__ && Object.keys(adminUsers.__matches__).map(k=>{
-                const m=adminUsers.__matches__[k];
-                return(
-                  <div key={k} style={{...S.glass,padding:"12px",marginBottom:"8px"}}>
-                    <div style={{fontWeight:"700"}}>🎮 {m.players?.host} vs {m.players?.guest||"Bekleniyor..."}</div>
-                    <div style={{fontSize:"12px",color:"#aaa",marginTop:"4px"}}>
-                      HP: {m.state?.hostHp} vs {m.state?.guestHp} | Soru: {m.state?.qIdx} | Başladı: {m.state?.started?"Evet":"Hayır"}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+
         </div>
       )}
 
