@@ -160,7 +160,8 @@ export default function Game() {
   const [customQs,       setCustomQs]       = useState<Q[]>([]); // artık kullanılmıyor, allQuestions var
 
   // Arena state - temiz ve bağımsız
-  const [arenaScreen, setArenaScreen] = useState<"menu"|"rules"|"searching"|"battle"|"ligmap">("menu");
+  const [arenaScreen,   setArenaScreen]   = useState<"menu"|"rules"|"searching"|"battle"|"ligmap">("menu");
+  const [arenaLeftTab,  setArenaLeftTab]  = useState<"siralama"|"liglar">("siralama");
   const [searchTime,  setSearchTime]  = useState(50);
   const [pvp,         setPvp]         = useState<PvPState>({ matchId:null, matchData:null, side:null });
 
@@ -953,86 +954,152 @@ export default function Game() {
             {arenaScreen==="menu"&&(
               <div style={{display:"flex",gap:"24px",alignItems:"flex-start",flexWrap:"wrap",justifyContent:"center",width:"100%",maxWidth:"900px"}}>
 
-                {/* Sol: Sıralama */}
-                <div style={{...S.glass,padding:"24px",width:"320px",minWidth:"280px"}}>
-                  <h2 style={{...S.neon("#fc0"),margin:"0 0 8px",textAlign:"center"}}>🏆 ARENA SIRALAMASI</h2>
-                  {player && (()=>{
-                    const myScore=player.arenaScore||0;
-                    const league=getLeague(myScore);
-                    return(
-                      <div style={{textAlign:"center",marginBottom:"12px",padding:"8px",borderRadius:"10px",background:league.bg,border:`1px solid ${league.color}`}}>
-                        <span style={{fontSize:"20px"}}>{league.icon}</span>
-                        <span style={{color:league.color,fontWeight:"800",marginLeft:"6px"}}>{league.name} Ligi</span>
-                        <span style={{color:"#aaa",fontSize:"12px",marginLeft:"8px"}}>{myScore} puan</span>
-                      </div>
-                    );
-                  })()}
-                  {(()=>{
-                    const myRank=leaderboard.findIndex(u=>u.name===player?.name);
-                    return leaderboard.length>0 ? (
-                      <div>
-                        {myRank>=0&&(
-                          <div style={{padding:"8px 12px",marginBottom:"10px",borderRadius:"10px",background:"rgba(0,114,255,0.2)",border:"1px solid #0072ff",fontSize:"13px",textAlign:"center"}}>
-                            📍 Senin sıran: <strong style={{color:"#fc0"}}>#{myRank+1}</strong> • {leaderboard[myRank]?.score||0} puan
+                {/* Sol: Sıralama + Lig Haritası */}
+                <div style={{...S.glass,padding:"20px",width:"340px",minWidth:"300px"}}>
+                  {/* Sekme */}
+                  <div style={{display:"flex",gap:"6px",marginBottom:"16px"}}>
+                    {(["siralama","liglar"] as const).map(t=>(
+                      <button key={t} style={{...S.btn,flex:1,fontSize:"12px",padding:"8px",
+                        background:(arenaLeftTab||"siralama")===t?"linear-gradient(135deg,#f7971e,#ffd200)":"rgba(255,255,255,0.08)",
+                        color:(arenaLeftTab||"siralama")===t?"#000":"white"}}
+                        onClick={()=>setArenaLeftTab(t)}>
+                        {t==="siralama"?"🏆 SIRALAMA":"⚔️ LİGLER"}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* SIRALAMA */}
+                  {(arenaLeftTab||"siralama")==="siralama"&&(
+                    <>
+                      {player && (()=>{
+                        const myScore=player.arenaScore||0;
+                        const league=getLeague(myScore);
+                        const myRank=leaderboard.findIndex(u=>u.name===player.name);
+                        return(
+                          <>
+                            <div style={{textAlign:"center",marginBottom:"10px",padding:"10px",borderRadius:"10px",background:league.bg,border:`2px solid ${league.color}`}}>
+                              <span style={{fontSize:"24px"}}>{league.icon}</span>
+                              <span style={{color:league.color,fontWeight:"800",fontSize:"16px",marginLeft:"8px"}}>{league.name} Ligi</span>
+                              <div style={{color:"#aaa",fontSize:"12px",marginTop:"2px"}}>{myScore} puan • {player.arenaGames||0} maç</div>
+                            </div>
+                            {myRank>=0&&(
+                              <div style={{padding:"7px 12px",marginBottom:"10px",borderRadius:"8px",background:"rgba(0,114,255,0.15)",border:"1px solid #0072ff",fontSize:"12px",textAlign:"center"}}>
+                                📍 Sıran: <strong style={{color:"#fc0"}}>#{myRank+1}</strong>
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
+                      <div style={{maxHeight:"320px",overflowY:"auto"}}>
+                        {leaderboard.length>0 ? leaderboard.map((u,i)=>{
+                          const lg=getLeague(u.score);
+                          const isMe=u.name===player?.name;
+                          return(
+                            <div key={u.name} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 10px",marginBottom:"4px",borderRadius:"8px",
+                              background:isMe?"rgba(0,114,255,0.25)":i===0?"rgba(255,215,0,0.12)":i===1?"rgba(192,192,192,0.1)":i===2?"rgba(205,127,50,0.1)":"rgba(255,255,255,0.04)",
+                              border:isMe?"2px solid #0072ff":i<3?"1px solid rgba(255,215,0,0.2)":"1px solid transparent"}}>
+                              <div style={{display:"flex",alignItems:"center",gap:"6px"}}>
+                                <span style={{fontSize:"16px",minWidth:"20px"}}>{i===0?"👑":i===1?"🥈":i===2?"🥉":lg.icon}</span>
+                                <div>
+                                  <div style={{fontSize:"12px",fontWeight:"800",color:isMe?"#00eaff":"#fff"}}>{i+1}. {u.name}{isMe?" ◀":""}</div>
+                                  <div style={{fontSize:"10px",color:lg.color}}>{lg.name} • Lv.{u.lvl}</div>
+                                </div>
+                              </div>
+                              <span style={{color:"#fc0",fontWeight:"800",fontSize:"13px"}}>{u.score}🏆</span>
+                            </div>
+                          );
+                        }):(
+                          <div style={{textAlign:"center",color:"#aaa",padding:"24px",fontSize:"13px"}}>
+                            <div style={{fontSize:"36px",marginBottom:"8px"}}>🏟️</div>
+                            Henüz kimse oynamadı!
                           </div>
                         )}
-                        <div style={{maxHeight:"340px",overflowY:"auto"}}>
-                          {leaderboard.map((u,i)=>{
-                            const lg=getLeague(u.score);
-                            const isMe=u.name===player?.name;
-                            return(
-                              <div key={u.name} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",marginBottom:"5px",borderRadius:"8px",
-                                background:isMe?"rgba(0,114,255,0.25)":i===0?"rgba(255,215,0,0.12)":i===1?"rgba(192,192,192,0.1)":i===2?"rgba(205,127,50,0.1)":"rgba(255,255,255,0.04)",
-                                border:isMe?"2px solid #0072ff":i<3?"1px solid rgba(255,215,0,0.25)":"1px solid transparent"}}>
-                                <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
-                                  <span style={{fontSize:"18px",minWidth:"24px"}}>{i===0?"👑":i===1?"🥈":i===2?"🥉":lg.icon}</span>
-                                  <div>
-                                    <div style={{fontSize:"13px",fontWeight:"800",color:isMe?"#00eaff":"#fff"}}>{i+1}. {u.name}{isMe?" (Sen)":""}</div>
-                                    <div style={{fontSize:"10px",color:lg.color}}>{lg.name} • {u.games||0} maç • Lv.{u.lvl}</div>
-                                  </div>
+                      </div>
+                      <button style={{...S.btn,width:"100%",marginTop:"10px",padding:"8px",fontSize:"12px",background:"rgba(255,255,255,0.08)"}} onClick={loadLeaderboard}>🔄 YENİLE</button>
+                    </>
+                  )}
+
+                  {/* LİGLER HARİTASI */}
+                  {(arenaLeftTab||"siralama")==="liglar"&&(
+                    <div style={{maxHeight:"420px",overflowY:"auto"}}>
+                      {[...LEAGUES].reverse().map((league)=>{
+                        const myScore=player?.arenaScore||0;
+                        const isCurrent=myScore>=league.min&&myScore<=league.max;
+                        const isUnlocked=myScore>=league.min;
+                        const pct=isCurrent?Math.min(100,((myScore-league.min)/Math.max(1,league.max===Infinity?2000:league.max-league.min))*100):isUnlocked?100:0;
+                        const nextL=LEAGUES[LEAGUES.indexOf(league)+1];
+                        return(
+                          <div key={league.name} style={{padding:"12px",marginBottom:"10px",borderRadius:"12px",
+                            border:`2px solid ${isCurrent?league.color:"rgba(255,255,255,0.07)"}`,
+                            background:isCurrent?league.bg:"rgba(255,255,255,0.03)",
+                            opacity:isUnlocked?1:0.4,
+                            transform:isCurrent?"scale(1.02)":"scale(1)",
+                            transition:"all 0.3s"}}>
+                            <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
+                              <span style={{fontSize:"30px",filter:isUnlocked?"":"grayscale(100%)"}}>{isUnlocked?league.icon:"🔒"}</span>
+                              <div style={{flex:1}}>
+                                <div style={{display:"flex",justifyContent:"space-between"}}>
+                                  <span style={{fontWeight:"800",color:isCurrent?league.color:"#fff",fontSize:"14px"}}>
+                                    {league.name}
+                                    {isCurrent&&<span style={{marginLeft:"6px",fontSize:"10px",background:league.color,color:"#000",padding:"1px 6px",borderRadius:"8px"}}>SEN</span>}
+                                  </span>
+                                  <span style={{fontSize:"11px",color:"#666"}}>{league.min}{league.max===Infinity?"+":" - "+league.max}</span>
                                 </div>
-                                <span style={{color:"#fc0",fontWeight:"800",fontSize:"14px"}}>{u.score}🏆</span>
+                                {isCurrent&&(
+                                  <>
+                                    <div style={{...S.bar,marginTop:"6px"}}>
+                                      <div style={{width:pct+"%",height:"100%",background:`linear-gradient(90deg,${league.color},#fff)`,transition:"width 0.5s"}}/>
+                                    </div>
+                                    <div style={{fontSize:"10px",color:"#aaa",marginTop:"3px"}}>
+                                      {myScore} puan
+                                      {nextL&&league.max!==Infinity&&<span style={{color:league.color}}> • {league.max-myScore} puan kaldı → {nextL.name}</span>}
+                                      {league.max===Infinity&&<span style={{color:"#fc0"}}> • Zirvedesin! 👑</span>}
+                                    </div>
+                                  </>
+                                )}
                               </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ):(
-                      <div style={{textAlign:"center",color:"#aaa",padding:"24px",fontSize:"13px"}}>
-                        <div style={{fontSize:"40px",marginBottom:"8px"}}>🏟️</div>
-                        Henüz arena maçı yok.<br/>İlk sen ol!
-                      </div>
-                    );
-                  })()}
-                  <button style={{...S.btn,width:"100%",marginTop:"12px",padding:"10px",fontSize:"12px",background:"rgba(255,255,255,0.08)"}} onClick={loadLeaderboard}>🔄 YENİLE</button>
+                            </div>
+                            <div style={{display:"flex",gap:"5px",flexWrap:"wrap",marginTop:"7px"}}>
+                              {league.name==="Bronz"&&<span style={{padding:"2px 7px",borderRadius:"6px",fontSize:"10px",background:"rgba(205,127,50,0.2)",color:"#cd7f32"}}>🥉 Başlangıç</span>}
+                              {league.name==="Gümüş"&&<span style={{padding:"2px 7px",borderRadius:"6px",fontSize:"10px",background:"rgba(192,192,192,0.2)",color:"#c0c0c0"}}>🥈 Gümüş Rozet</span>}
+                              {league.name==="Altın"&&<span style={{padding:"2px 7px",borderRadius:"6px",fontSize:"10px",background:"rgba(255,215,0,0.2)",color:"#ffd700"}}>🥇 +500 Altın</span>}
+                              {league.name==="Platin"&&<span style={{padding:"2px 7px",borderRadius:"6px",fontSize:"10px",background:"rgba(0,234,255,0.2)",color:"#00eaff"}}>💎 +1000 Altın</span>}
+                              {league.name==="Elmas"&&<span style={{padding:"2px 7px",borderRadius:"6px",fontSize:"10px",background:"rgba(185,242,255,0.2)",color:"#b9f2ff"}}>💠 +2000 Altın</span>}
+                              {league.name==="Efsane"&&<span style={{padding:"2px 7px",borderRadius:"6px",fontSize:"10px",background:"rgba(255,200,0,0.2)",color:"#fc0"}}>👑 EFSANE +5000</span>}
+                              <span style={{padding:"2px 7px",borderRadius:"6px",fontSize:"10px",background:"rgba(0,255,100,0.1)",color:"#0f6"}}>+{[50,75,100,150,200,300][LEAGUES.indexOf(league)]}/galibiyet</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 {/* Sağ: Butonlar */}
-                <div style={{...S.glass,padding:"32px",width:"360px",minWidth:"300px",display:"flex",flexDirection:"column",gap:"14px",alignItems:"stretch"}}>
+                <div style={{...S.glass,padding:"32px",width:"340px",minWidth:"300px",display:"flex",flexDirection:"column",gap:"14px",alignItems:"stretch"}}>
                   <h2 style={{...S.neon("#f05"),margin:"0 0 8px",textAlign:"center",fontSize:"26px"}}>⚔️ ARENA</h2>
-                  <p style={{color:"#aaa",textAlign:"center",margin:"0 0 12px",fontSize:"14px",lineHeight:"1.6"}}>
+                  {(()=>{
+                    const myScore=player?.arenaScore||0;
+                    const league=getLeague(myScore);
+                    return(
+                      <div style={{textAlign:"center",padding:"10px",borderRadius:"10px",background:league.bg,border:`1px solid ${league.color}`,marginBottom:"6px"}}>
+                        <span style={{fontSize:"22px"}}>{league.icon}</span>
+                        <span style={{color:league.color,fontWeight:"800",marginLeft:"6px"}}>{league.name}</span>
+                        <span style={{color:"#aaa",fontSize:"12px",marginLeft:"6px"}}>{myScore}🏆</span>
+                      </div>
+                    );
+                  })()}
+                  <p style={{color:"#aaa",textAlign:"center",margin:"0",fontSize:"13px",lineHeight:"1.6"}}>
                     Gerçek oyunculara karşı savaş!<br/>
                     50 sn'de rakip bulunamazsa bot ile eşleş.
                   </p>
-
-                  <button
-                    style={{...S.btn,...S.btnDanger,padding:"18px",fontSize:"18px",width:"100%"}}
-                    onClick={findMatch}
-                  >
+                  <button style={{...S.btn,...S.btnDanger,padding:"18px",fontSize:"18px",width:"100%"}} onClick={findMatch}>
                     🎮 EŞLEŞTİRME BUL
                   </button>
-
-                  <button
-                    style={{...S.btn,padding:"14px",fontSize:"15px",width:"100%",background:"rgba(255,255,255,0.08)"}}
-                    onClick={()=>setArenaScreen("rules")}
-                  >
+                  <button style={{...S.btn,padding:"12px",fontSize:"14px",width:"100%",background:"rgba(255,255,255,0.08)"}} onClick={()=>setArenaScreen("rules")}>
                     📜 KURALLARI GÖR
                   </button>
-
-                  <button
-                    style={{...S.btn,...S.btnSuccess,padding:"12px",fontSize:"14px",width:"100%"}}
-                    onClick={()=>setScreen("menu")}
-                  >
+                  <button style={{...S.btn,...S.btnSuccess,padding:"12px",fontSize:"14px",width:"100%"}} onClick={()=>setScreen("menu")}>
                     ← ANA MENÜYE DÖN
                   </button>
                 </div>
