@@ -84,7 +84,8 @@ const REGIONS:Region[] = [
   {id:"r3",name:"Arena",x:80,y:20,type:"all",bg:"https://images.unsplash.com/photo-1514539079130-25950c84af65?w=1000",unlockC:"king",
    levels:[{id:"b4",t:"SON SAVAŞ",hp:1200,en:"Cehalet",ico:"🐲",diff:"Final",isBoss:true}]},
 ];
-const QUESTIONS:Q[] = [
+// Sorular artık Firebase'den yükleniyor - DEFAULT_QUESTIONS sadece ilk yüklemede kullanılır
+const DEFAULT_QUESTIONS:Q[] = [
   {q:"İletişimi başlatan öğe?",o:["Alıcı","Kanal","Gönderici","Dönüt"],a:2,topic:"iletisim"},
   {q:"Sözlü iletişim türü?",o:["Mektup","Panel","Dilekçe","Roman"],a:1,topic:"iletisim"},
   {q:"Kitle iletişim aracı örneği?",o:["Radyo","Mektup","Günlük","Roman"],a:0,topic:"iletisim"},
@@ -154,7 +155,9 @@ export default function Game() {
   const [adminUsers,    setAdminUsers]    = useState<{[k:string]:any}>({});
   const [adminQuestion, setAdminQuestion] = useState({ q:"", o:["","","",""], a:0, topic:"genel" });
   const [adminTab,      setAdminTab]      = useState<"users"|"questions"|"matches"|"system">("users");
-  const [customQs,      setCustomQs]      = useState<Q[]>([]);
+  const [allQuestions,   setAllQuestions]   = useState<(Q&{fbKey?:string})[]>([]);
+  const [editingQ,       setEditingQ]       = useState<(Q&{fbKey?:string})|null>(null);
+  const [customQs,       setCustomQs]       = useState<Q[]>([]); // artık kullanılmıyor, allQuestions var
 
   // Arena state - temiz ve bağımsız
   const [arenaScreen, setArenaScreen] = useState<"menu"|"rules"|"searching"|"battle"|"ligmap">("menu");
@@ -245,15 +248,26 @@ export default function Game() {
     } catch(e){ notify("Hata: "+String(e)); }
   };
 
-  // Admin: özel soruları yükle
+  // Tüm soruları Firebase'den yükle
   const loadCustomQuestions = async () => {
     try {
-      const snap = await get(ref(db,"customQuestions"));
+      const snap = await get(ref(db,"questions"));
       if(snap.exists()) {
         const obj = snap.val();
-        setCustomQs(Object.values(obj) as Q[]);
+        const qs = Object.entries(obj).map(([k,v]:any)=>({...v,fbKey:k}));
+        setAllQuestions(qs);
+        setCustomQs(qs); // eski uyumluluk
+      } else {
+        // İlk kez - default soruları Firebase'e yükle
+        const updates:any = {};
+        DEFAULT_QUESTIONS.forEach((q,i) => {
+          updates["q"+i] = q;
+        });
+        await set(ref(db,"questions"), updates);
+        setAllQuestions(DEFAULT_QUESTIONS);
+        setCustomQs(DEFAULT_QUESTIONS);
       }
-    } catch(e){}
+    } catch(e){ setAllQuestions(DEFAULT_QUESTIONS); setCustomQs(DEFAULT_QUESTIONS); }
   };
 
   // Admin: kullanıcı sıfırla
@@ -1027,60 +1041,74 @@ export default function Game() {
             )}
 
             {/* ── RAKİP ARANYOR ── */}
-            {arenaScreen==="ligmap"&&(
-              <div style={{padding:"20px",overflowY:"auto"}}>
-                <h2 style={{...S.neon("#fc0"),textAlign:"center",marginBottom:"20px"}}>🗺️ LİG HARİTASI</h2>
-                <div style={{display:"flex",flexDirection:"column",gap:"12px",alignItems:"center"}}>
-                  {LEAGUES.map((lg,i)=>{
-                    const myScore=player?.arenaScore||0;
-                    const isCurrentLig=myScore>=lg.min&&myScore<=lg.max;
-                    const isPassed=myScore>lg.max;
-                    const isLocked=myScore<lg.min;
-                    return(
-                      <div key={lg.name} style={{
-                        width:"100%",maxWidth:"420px",padding:"16px 20px",borderRadius:"16px",
-                        background:isCurrentLig?lg.bg:isPassed?"rgba(255,255,255,0.04)":"rgba(0,0,0,0.3)",
-                        border:`2px solid ${isCurrentLig?lg.color:isPassed?"rgba(255,255,255,0.15)":"rgba(255,255,255,0.06)"}`,
-                        opacity:isLocked?0.5:1,
-                        transform:isCurrentLig?"scale(1.03)":"scale(1)",
-                        transition:"all 0.3s ease",
-                        position:"relative"
-                      }}>
-                        {isCurrentLig&&<div style={{position:"absolute",top:"-10px",right:"14px",background:"#fc0",color:"#000",fontSize:"11px",fontWeight:"800",padding:"2px 10px",borderRadius:"20px"}}>SEN BURADASIN</div>}
-                        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                          <div style={{display:"flex",alignItems:"center",gap:"12px"}}>
-                            <span style={{fontSize:"36px"}}>{lg.icon}</span>
-                            <div>
-                              <div style={{fontWeight:"800",fontSize:"18px",color:lg.color}}>{lg.name} Ligi</div>
-                              <div style={{fontSize:"12px",color:"#aaa"}}>{lg.min} - {lg.max===Infinity?"∞":lg.max} puan</div>
+                        {arenaScreen==="ligmap"&&(
+              <div style={{flex:1,overflowY:"auto",padding:"0 16px 24px"}}>
+                <h2 style={{...S.neon("#fc0"),textAlign:"center",margin:"16px 0"}}>⚔️ ARENA LİGLERİ</h2>
+                {(()=>{
+                  const myScore=player?.arenaScore||0;
+                  const myLeague=getLeague(myScore);
+                  return(
+                    <div style={{textAlign:"center",marginBottom:"20px",padding:"12px",borderRadius:"12px",background:myLeague.bg,border:`2px solid ${myLeague.color}`}}>
+                      <div style={{fontSize:"36px"}}>{myLeague.icon}</div>
+                      <div style={{color:myLeague.color,fontWeight:"800",fontSize:"18px"}}>{myLeague.name} Ligi</div>
+                      <div style={{color:"#aaa",fontSize:"13px"}}>{myScore} Arena Puan • {player?.arenaGames||0} Maç</div>
+                    </div>
+                  );
+                })()}
+
+                {/* Liglar - aşağıdan yukarı */}
+                {[...LEAGUES].reverse().map((league,ri)=>{
+                  const myScore=player?.arenaScore||0;
+                  const isCurrent=myScore>=league.min&&myScore<=league.max;
+                  const isUnlocked=myScore>=league.min;
+                  const progress=isCurrent?Math.min(100,((myScore-league.min)/Math.max(1,league.max===Infinity?league.min+2000:league.max-league.min))*100):isUnlocked?100:0;
+                  const nextLeague=LEAGUES[LEAGUES.indexOf(league)+1];
+                  return(
+                    <div key={league.name} style={{...S.glass,padding:"16px",marginBottom:"12px",
+                      border:`2px solid ${isCurrent?league.color:"rgba(255,255,255,0.08)"}`,
+                      background:isCurrent?league.bg:"rgba(16,20,24,0.6)",
+                      opacity:isUnlocked?1:0.45,
+                      transform:isCurrent?"scale(1.02)":"scale(1)",
+                      transition:"all 0.3s ease"
+                    }}>
+                      <div style={{display:"flex",alignItems:"center",gap:"12px"}}>
+                        <div style={{fontSize:"40px",filter:isUnlocked?"":"grayscale(100%)"}}>{league.icon}</div>
+                        <div style={{flex:1}}>
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                            <div style={{fontWeight:"800",fontSize:"16px",color:isCurrent?league.color:"#fff"}}>
+                              {league.name} Ligi
+                              {isCurrent&&<span style={{marginLeft:"8px",fontSize:"12px",background:league.color,color:"#000",padding:"2px 8px",borderRadius:"10px"}}>◀ Şu an burada</span>}
                             </div>
+                            <div style={{fontSize:"12px",color:"#aaa"}}>{league.min}{league.max===Infinity?"+":" - "+league.max} 🏆</div>
                           </div>
-                          <div style={{textAlign:"right"}}>
-                            {isPassed&&<div style={{color:"#0f6",fontSize:"12px",fontWeight:"700"}}>✅ Geçildi</div>}
-                            {isCurrentLig&&<div style={{color:lg.color,fontSize:"13px",fontWeight:"800"}}>{myScore} / {lg.max===Infinity?"∞":lg.max}</div>}
-                            {isLocked&&<div style={{color:"#666",fontSize:"12px"}}>🔒 Kilitli</div>}
-                          </div>
+                          {isCurrent&&(
+                            <>
+                              <div style={{...S.bar,width:"100%",marginTop:"8px"}}>
+                                <div style={{width:progress+"%",height:"100%",background:`linear-gradient(90deg,${league.color},#fff)`,transition:"width 0.5s ease"}}/>
+                              </div>
+                              <div style={{fontSize:"11px",color:"#aaa",marginTop:"4px"}}>
+                                {(player?.arenaScore||0)} / {league.max===Infinity?"MAX":league.max} puan
+                                {nextLeague&&league.max!==Infinity&&<span style={{color:league.color,marginLeft:"6px"}}>→ {nextLeague.name}: {league.max-myScore} puan kaldı</span>}
+                              </div>
+                            </>
+                          )}
                         </div>
-                        {isCurrentLig&&lg.max!==Infinity&&(
-                          <div style={{marginTop:"10px"}}>
-                            <div style={{...{height:"6px",borderRadius:"4px",background:"rgba(255,255,255,0.1)",overflow:"hidden"}}}>
-                              <div style={{height:"100%",borderRadius:"4px",background:lg.color,width:`${Math.min(100,((myScore-lg.min)/(lg.max-lg.min))*100)}%`,transition:"width 0.5s ease"}}/>
-                            </div>
-                            <div style={{fontSize:"11px",color:"#aaa",marginTop:"4px",textAlign:"right"}}>
-                              Sonraki lig için {lg.max-myScore} puan daha
-                            </div>
-                          </div>
-                        )}
-                        {lg.name==="Efsane"&&isCurrentLig&&(
-                          <div style={{marginTop:"8px",color:"#fc0",fontSize:"13px",fontWeight:"700",textAlign:"center"}}>
-                            👑 EN YÜKSEK LİGDESİN! Tebrikler!
-                          </div>
-                        )}
+                        {!isUnlocked&&<div style={{fontSize:"24px"}}>🔒</div>}
                       </div>
-                    );
-                  })}
-                </div>
-                <button style={{...S.btn,marginTop:"20px",width:"100%"}} onClick={()=>setArenaScreen("menu")}>← GERİ</button>
+                      {/* Ödüller */}
+                      <div style={{marginTop:"10px",display:"flex",gap:"8px",flexWrap:"wrap"}}>
+                        {league.name==="Bronz"&&<span style={{padding:"3px 10px",borderRadius:"8px",fontSize:"11px",background:"rgba(205,127,50,0.2)",color:"#cd7f32"}}>🥉 Başlangıç Kalkanı</span>}
+                        {league.name==="Gümüş"&&<span style={{padding:"3px 10px",borderRadius:"8px",fontSize:"11px",background:"rgba(192,192,192,0.2)",color:"#c0c0c0"}}>🥈 Gümüş Kostüm Rozeti</span>}
+                        {league.name==="Altın"&&<span style={{padding:"3px 10px",borderRadius:"8px",fontSize:"11px",background:"rgba(255,215,0,0.2)",color:"#ffd700"}}>🥇 Altın Çerçeve +500 Altın</span>}
+                        {league.name==="Platin"&&<span style={{padding:"3px 10px",borderRadius:"8px",fontSize:"11px",background:"rgba(0,234,255,0.2)",color:"#00eaff"}}>💎 Platin Başlık +1000 Altın</span>}
+                        {league.name==="Elmas"&&<span style={{padding:"3px 10px",borderRadius:"8px",fontSize:"11px",background:"rgba(185,242,255,0.2)",color:"#b9f2ff"}}>💠 Elmas Efekt +2000 Altın</span>}
+                        {league.name==="Efsane"&&<span style={{padding:"3px 10px",borderRadius:"8px",fontSize:"11px",background:"rgba(255,200,0,0.2)",color:"#fc0"}}>👑 EFSANE UNVANI +5000 Altın</span>}
+                        <span style={{padding:"3px 10px",borderRadius:"8px",fontSize:"11px",background:"rgba(0,255,100,0.1)",color:"#0f6"}}>+{[50,75,100,150,200,300][LEAGUES.indexOf(league)]} puan/galibiyet</span>
+                      </div>
+                    </div>
+                  );
+                })}
+                <div style={{height:"20px"}}/>
               </div>
             )}
 
@@ -1388,61 +1416,94 @@ export default function Game() {
           {/* SORULAR */}
           {adminTab==="questions"&&(
             <div>
-              <h2 style={{color:"#fc0",marginTop:0}}>📝 Soru Ekle</h2>
-              <div style={{...S.glass,padding:"20px",marginBottom:"20px",border:"1px solid rgba(0,234,255,0.3)"}}>
-                <input style={{width:"100%",padding:"10px",marginBottom:"10px",borderRadius:"8px",border:"1px solid #444",background:"rgba(255,255,255,0.06)",color:"white",boxSizing:"border-box"}}
-                  placeholder="Soru metni..." value={adminQuestion.q}
-                  onChange={e=>setAdminQuestion(p=>({...p,q:e.target.value}))}/>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px",marginBottom:"10px"}}>
-                  {adminQuestion.o.map((opt,i)=>(
-                    <input key={i} style={{padding:"8px",borderRadius:"8px",border:`1px solid ${adminQuestion.a===i?"#0f6":"#444"}`,background:"rgba(255,255,255,0.06)",color:"white"}}
-                      placeholder={`Şık ${i+1}`} value={opt}
-                      onChange={e=>setAdminQuestion(p=>({...p,o:p.o.map((x,j)=>j===i?e.target.value:x)}))}
-                      onClick={()=>setAdminQuestion(p=>({...p,a:i}))}/>
-                  ))}
-                </div>
-                <div style={{fontSize:"12px",color:"#aaa",marginBottom:"10px"}}>💡 Doğru cevap şıkına tıkla (şu an: Şık {adminQuestion.a+1})</div>
-                <div style={{display:"flex",gap:"10px",alignItems:"center"}}>
-                  <select style={{padding:"8px",borderRadius:"8px",border:"1px solid #444",background:"#111",color:"white"}}
-                    value={adminQuestion.topic} onChange={e=>setAdminQuestion(p=>({...p,topic:e.target.value}))}>
-                    <option value="genel">Genel</option>
-                    <option value="iletisim">İletişim</option>
-                    <option value="hikaye">Hikaye</option>
-                    <option value="siir">Şiir</option>
-                  </select>
-                  <button style={{...S.btn,...S.btnSuccess,flex:1}} onClick={addCustomQuestion}>✅ SORU EKLE</button>
-                </div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"16px"}}>
+                <h2 style={{color:"#fc0",margin:0}}>📝 Soru Yönetimi ({allQuestions.length} soru)</h2>
+                <button style={{...S.btn,...S.btnSuccess,fontSize:"13px"}} onClick={()=>setEditingQ({q:"",o:["","","",""],a:0,topic:"genel"})}>
+                  ➕ YENİ SORU
+                </button>
               </div>
-              <h3 style={{color:"#aaa"}}>Eklenen Özel Sorular ({customQs.length})</h3>
-              <h3 style={{color:"#aaa",marginTop:"24px"}}>📚 Oyundaki Tüm Sorular ({QUESTIONS.length})</h3>
-              <div style={{maxHeight:"300px",overflowY:"auto"}}>
-                {QUESTIONS.map((q,i)=>(
-                  <div key={i} style={{...S.glass,padding:"10px",marginBottom:"6px",fontSize:"12px",border:"1px solid rgba(255,255,255,0.08)"}}>
-                    <div style={{fontWeight:"700",marginBottom:"4px",color:"#fc0"}}>{i+1}. {q.q}</div>
-                    <div style={{display:"flex",gap:"6px",flexWrap:"wrap"}}>
-                      {q.o.map((o,j)=>(
-                        <span key={j} style={{padding:"2px 8px",borderRadius:"6px",
-                          background:j===q.a?"rgba(0,255,100,0.2)":"rgba(255,255,255,0.06)",
-                          border:j===q.a?"1px solid #0f6":"1px solid #333",fontSize:"11px"}}>
-                          {j===q.a?"✅ ":""}{o}
-                        </span>
-                      ))}
+
+              {editingQ&&(
+                <div style={{...S.glass,padding:"20px",marginBottom:"20px",border:"1px solid rgba(0,234,255,0.5)"}}>
+                  <h3 style={{color:"#00eaff",margin:"0 0 14px"}}>{editingQ.fbKey?"✏️ Soru Düzenle":"➕ Yeni Soru Ekle"}</h3>
+                  <input style={{width:"100%",padding:"10px",marginBottom:"10px",borderRadius:"8px",border:"1px solid #444",background:"rgba(255,255,255,0.06)",color:"white",boxSizing:"border-box",fontSize:"14px"}}
+                    placeholder="Soru metni..." value={editingQ.q}
+                    onChange={e=>setEditingQ(p=>p?{...p,q:e.target.value}:null)}/>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px",marginBottom:"10px"}}>
+                    {editingQ.o.map((opt,i)=>(
+                      <div key={i} style={{position:"relative"}}>
+                        <input style={{width:"100%",padding:"8px 34px 8px 10px",borderRadius:"8px",border:`2px solid ${editingQ.a===i?"#0f6":"#444"}`,background:editingQ.a===i?"rgba(0,255,100,0.08)":"rgba(255,255,255,0.06)",color:"white",boxSizing:"border-box"}}
+                          placeholder={"Şık "+(i+1)} value={opt}
+                          onChange={e=>setEditingQ(p=>p?{...p,o:p.o.map((x,j)=>j===i?e.target.value:x)}:null)}/>
+                        <button style={{position:"absolute",right:"6px",top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:"16px",color:editingQ.a===i?"#0f6":"#555"}}
+                          onClick={()=>setEditingQ(p=>p?{...p,a:i}:null)}>
+                          {editingQ.a===i?"✅":"○"}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{display:"flex",gap:"10px",alignItems:"center",flexWrap:"wrap"}}>
+                    <select style={{padding:"9px",borderRadius:"8px",border:"1px solid #444",background:"#111",color:"white"}}
+                      value={editingQ.topic} onChange={e=>setEditingQ(p=>p?{...p,topic:e.target.value}:null)}>
+                      <option value="genel">Genel</option>
+                      <option value="iletisim">İletişim</option>
+                      <option value="hikaye">Hikaye</option>
+                      <option value="siir">Şiir</option>
+                    </select>
+                    <button style={{...S.btn,...S.btnSuccess,flex:1}} onClick={async()=>{
+                      if(!editingQ||!editingQ.q.trim()||editingQ.o.some(o=>!o.trim())){notify("Tüm alanları doldur!");return;}
+                      try {
+                        const {fbKey,...qData}=editingQ;
+                        if(fbKey){
+                          await set(ref(db,"questions/"+fbKey),qData);
+                          notify("✅ Soru güncellendi!");
+                        } else {
+                          await set(ref(db,"questions/q"+Date.now()),qData);
+                          notify("✅ Soru eklendi!");
+                        }
+                        setEditingQ(null); loadCustomQuestions();
+                      } catch(e){notify("Hata!");}
+                    }}>
+                      {editingQ.fbKey?"💾 KAYDET":"➕ EKLE"}
+                    </button>
+                    <button style={{...S.btn,background:"#444"}} onClick={()=>setEditingQ(null)}>İPTAL</button>
+                  </div>
+                </div>
+              )}
+
+              <div style={{maxHeight:"550px",overflowY:"auto"}}>
+                {allQuestions.map((q,i)=>(
+                  <div key={(q as any).fbKey||i} style={{...S.glass,padding:"12px",marginBottom:"8px",border:"1px solid rgba(255,255,255,0.08)"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:"8px"}}>
+                      <div style={{flex:1}}>
+                        <div style={{fontWeight:"700",fontSize:"13px",color:"#fc0",marginBottom:"6px"}}>{i+1}. {q.q}</div>
+                        <div style={{display:"flex",gap:"5px",flexWrap:"wrap"}}>
+                          {q.o.map((o,j)=>(
+                            <span key={j} style={{padding:"2px 8px",borderRadius:"6px",fontSize:"11px",
+                              background:j===q.a?"rgba(0,255,100,0.2)":"rgba(255,255,255,0.04)",
+                              border:j===q.a?"1px solid #0f6":"1px solid #333"}}>
+                              {j===q.a?"✅ ":""}{o}
+                            </span>
+                          ))}
+                        </div>
+                        <div style={{color:"#555",fontSize:"10px",marginTop:"4px"}}>📌 {q.topic}</div>
+                      </div>
+                      <div style={{display:"flex",gap:"6px",flexShrink:0}}>
+                        <button style={{...S.btn,padding:"5px 10px",fontSize:"11px",background:"rgba(0,114,255,0.4)"}}
+                          onClick={()=>setEditingQ({...q})}>✏️</button>
+                        <button style={{...S.btn,...S.btnDanger,padding:"5px 10px",fontSize:"11px"}}
+                          onClick={async()=>{
+                            const key=(q as any).fbKey;
+                            if(!key||!confirm("Soru silinsin mi?"))return;
+                            await set(ref(db,"questions/"+key),null);
+                            notify("Soru silindi!");
+                            loadCustomQuestions();
+                          }}>🗑️</button>
+                      </div>
                     </div>
-                    <div style={{color:"#555",fontSize:"10px",marginTop:"3px"}}>Konu: {q.topic}</div>
                   </div>
                 ))}
               </div>
-              {customQs.map((q,i)=>(
-                <div key={i} style={{...S.glass,padding:"12px",marginBottom:"8px",fontSize:"13px"}}>
-                  <div style={{fontWeight:"700",marginBottom:"4px"}}>{q.q}</div>
-                  <div style={{display:"flex",gap:"8px",flexWrap:"wrap"}}>
-                    {q.o.map((o,j)=>(
-                      <span key={j} style={{padding:"3px 8px",borderRadius:"6px",background:j===q.a?"rgba(0,255,100,0.2)":"rgba(255,255,255,0.06)",border:j===q.a?"1px solid #0f6":"1px solid #333",fontSize:"12px"}}>{o}</span>
-                    ))}
-                  </div>
-                  <div style={{color:"#aaa",fontSize:"11px",marginTop:"4px"}}>Konu: {q.topic}</div>
-                </div>
-              ))}
             </div>
           )}
 
