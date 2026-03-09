@@ -46,6 +46,18 @@ type MatchState = {
 type MatchData = { id:string; players:{host:string;guest:string}; state:MatchState; createdAt:number };
 type PvPState  = { matchId:string|null; matchData:MatchData|null; side:"host"|"guest"|null };
 
+
+// ─── LİG SİSTEMİ ────────────────────────────────────────────────────────────
+const LEAGUES = [
+  { name:"Bronz",     icon:"🥉", min:0,    max:499,  color:"#cd7f32", bg:"rgba(205,127,50,0.15)" },
+  { name:"Gümüş",    icon:"🥈", min:500,  max:1499, color:"#c0c0c0", bg:"rgba(192,192,192,0.15)" },
+  { name:"Altın",    icon:"🥇", min:1500, max:2999, color:"#ffd700", bg:"rgba(255,215,0,0.15)" },
+  { name:"Platin",   icon:"💎", min:3000, max:5999, color:"#00eaff", bg:"rgba(0,234,255,0.15)" },
+  { name:"Elmas",    icon:"💠", min:6000, max:9999, color:"#b9f2ff", bg:"rgba(185,242,255,0.2)" },
+  { name:"Efsane",   icon:"👑", min:10000,max:Infinity,color:"#fc0", bg:"rgba(255,200,0,0.2)" },
+];
+const getLeague = (score:number) => LEAGUES.find(l=>score>=l.min&&score<=l.max) || LEAGUES[0];
+
 // ─── İÇERİK ─────────────────────────────────────────────────────────────────
 const ITEMS: {[k:string]:Item} = {
   w1:{id:"w1",name:"Paslı Kalem",type:"wep",val:20,cost:50,icon:"✏️"},
@@ -124,7 +136,7 @@ const isAdmin = (name:string) => ["ADMIN","ADMIN2","ADMIN3"].includes(name);
 
 // ─── BILEŞEN ────────────────────────────────────────────────────────────────
 export default function Game() {
-  const [screen,    setScreen]    = useState<"auth"|"menu"|"battle"|"map"|"shop"|"inv"|"arena">("auth");
+  const [screen,    setScreen]    = useState<"auth"|"menu"|"battle"|"map"|"shop"|"inv"|"arena"|"admin">("auth");
   const [player,    setPlayer]    = useState<Player|null>(null);
   const [auth,      setAuth]      = useState({ user:"", pass:"", reg:false });
   const [battle,    setBattle]    = useState<BattleState>({ active:false, enemyHp:0, maxEnemyHp:0, qs:[], qIdx:0, timer:20, combo:0, log:null, wait:false, dmgText:null, shaking:false });
@@ -135,7 +147,13 @@ export default function Game() {
   const [mounted,   setMounted]   = useState(false);
   const [lastAns,   setLastAns]   = useState<{idx:number|null;correct:boolean|null;chosen:number|null}>({idx:null,correct:null,chosen:null});
   const [showAnswer, setShowAnswer] = useState<{correctIdx:number;chosenIdx:number;correct:boolean}|null>(null);
-  const [leaderboard, setLeaderboard] = useState<{name:string;score:number;lvl:number}[]>([]);
+  const [leaderboard, setLeaderboard] = useState<{name:string;score:number;lvl:number;games?:number}[]>([]);
+
+  // Admin panel states
+  const [adminUsers,    setAdminUsers]    = useState<{[k:string]:any}>({});
+  const [adminQuestion, setAdminQuestion] = useState({ q:"", o:["","","",""], a:0, topic:"genel" });
+  const [adminTab,      setAdminTab]      = useState<"users"|"questions"|"matches">("users");
+  const [customQs,      setCustomQs]      = useState<Q[]>([]);
 
   // Arena state - temiz ve bağımsız
   const [arenaScreen, setArenaScreen] = useState<"menu"|"rules"|"searching"|"battle">("menu");
@@ -150,13 +168,43 @@ export default function Game() {
   const notify = (m:string) => { setNotif(m); setTimeout(()=>setNotif(null),3000); };
   const playSound = (t:"click"|"win"|"correct"|"wrong") => {
     if (typeof window==="undefined") return;
-    const urls:Record<string,string> = {
-      click:   "https://cdn.pixabay.com/audio/2022/03/24/audio_78c2cb5739.mp3",
-      win:     "https://cdn.pixabay.com/audio/2021/08/09/audio_88447e769f.mp3",
-      correct: "https://cdn.pixabay.com/audio/2022/01/18/audio_8db1a2afce.mp3",
-      wrong:   "https://cdn.pixabay.com/audio/2021/10/28/audio_d432e8b819.mp3",
-    };
-    try { new Audio(urls[t]).play().catch(()=>{}); } catch(e){}
+    // Web Audio API ile ses üret - dış bağlantı gerekmez
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      if(t==="correct") {
+        osc.frequency.setValueAtTime(523, ctx.currentTime);
+        osc.frequency.setValueAtTime(659, ctx.currentTime+0.1);
+        osc.frequency.setValueAtTime(784, ctx.currentTime+0.2);
+        gain.gain.setValueAtTime(0.3, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime+0.5);
+        osc.start(); osc.stop(ctx.currentTime+0.5);
+      } else if(t==="wrong") {
+        osc.type="sawtooth";
+        osc.frequency.setValueAtTime(200, ctx.currentTime);
+        osc.frequency.setValueAtTime(150, ctx.currentTime+0.15);
+        gain.gain.setValueAtTime(0.3, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime+0.4);
+        osc.start(); osc.stop(ctx.currentTime+0.4);
+      } else if(t==="win") {
+        const notes=[523,659,784,1047];
+        notes.forEach((freq,i)=>{
+          const o=ctx.createOscillator(); const g=ctx.createGain();
+          o.connect(g); g.connect(ctx.destination);
+          o.frequency.value=freq;
+          g.gain.setValueAtTime(0.25, ctx.currentTime+i*0.12);
+          g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime+i*0.12+0.4);
+          o.start(ctx.currentTime+i*0.12); o.stop(ctx.currentTime+i*0.12+0.4);
+        });
+      } else if(t==="click") {
+        osc.frequency.setValueAtTime(800, ctx.currentTime);
+        gain.gain.setValueAtTime(0.1, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime+0.08);
+        osc.start(); osc.stop(ctx.currentTime+0.08);
+      }
+    } catch(e){}
   };
   const getStats = (p:Player) => {
     let atk=25+p.lvl*10, hp=120+p.lvl*30;
@@ -172,21 +220,70 @@ export default function Game() {
     p.regionProgress = p.regionProgress||{};
     REGIONS.forEach(r=>{ if(p.regionProgress[r.id]===undefined) p.regionProgress[r.id]=0; });
     if(!isAdmin(p.name)) { try { localStorage.setItem(SAVE_KEY+p.name,JSON.stringify(p)); } catch(e){} }
-    update(ref(db,"users/"+p.name),{score:p.score,lvl:p.lvl,name:p.name}).catch(()=>{});
+    update(ref(db,"users/"+p.name),{score:p.score,lvl:p.lvl,name:p.name,arenaScore:p.arenaScore||0,arenaGames:p.arenaGames||0}).catch(()=>{});
     setPlayer({...p});
     loadLeaderboard();
   };
+  // Admin: tüm kullanıcıları yükle
+  const loadAdminUsers = async () => {
+    try {
+      const snap = await get(ref(db,"users"));
+      if(snap.exists()) setAdminUsers(snap.val());
+    } catch(e){}
+  };
+
+  // Admin: Firebase'e özel soru ekle
+  const addCustomQuestion = async () => {
+    if(!adminQuestion.q.trim()||adminQuestion.o.some(o=>!o.trim())) return notify("Tüm alanları doldur!");
+    try {
+      const newQ = { ...adminQuestion, id: Date.now().toString() };
+      await push(ref(db,"customQuestions"), newQ);
+      setCustomQs(prev=>[...prev, newQ as any]);
+      setAdminQuestion({ q:"", o:["","","",""], a:0, topic:"genel" });
+      notify("✅ Soru eklendi!");
+    } catch(e){ notify("Hata: "+String(e)); }
+  };
+
+  // Admin: özel soruları yükle
+  const loadCustomQuestions = async () => {
+    try {
+      const snap = await get(ref(db,"customQuestions"));
+      if(snap.exists()) {
+        const obj = snap.val();
+        setCustomQs(Object.values(obj) as Q[]);
+      }
+    } catch(e){}
+  };
+
+  // Admin: kullanıcı sıfırla
+  const resetUser = async (name:string) => {
+    if(!confirm(`${name} sıfırlansın mı?`)) return;
+    try {
+      await set(ref(db,`users/${name}`), null);
+      localStorage.removeItem(SAVE_KEY+name);
+      notify(`${name} sıfırlandı!`);
+      loadAdminUsers();
+    } catch(e){}
+  };
+
   const loadLeaderboard = async () => {
     try {
       const snap = await get(ref(db,"users"));
       if(snap.exists()) {
         const u = snap.val();
-        setLeaderboard(Object.keys(u).map(k=>({name:k,score:u[k].score||0,lvl:u[k].lvl||1})).sort((a,b)=>b.score-a.score).slice(0,10));
+        const ADMINS=["ADMIN","ADMIN2","ADMIN3"];
+        setLeaderboard(
+          Object.keys(u)
+            .filter(k=>!ADMINS.includes(k) && (u[k].arenaScore||0)>0)
+            .map(k=>({name:k,score:u[k].arenaScore||0,lvl:u[k].lvl||1,games:u[k].arenaGames||0}))
+            .sort((a,b)=>b.score-a.score)
+            .slice(0,200)
+        );
       }
     } catch(e){}
   };
 
-  useEffect(() => { setMounted(true); loadLeaderboard(); }, []);
+  useEffect(() => { setMounted(true); loadLeaderboard(); loadCustomQuestions(); }, []);
 
   // ── AUTH ─────────────────────────────────────────────────────────────────
   const handleAuth = () => {
@@ -550,8 +647,20 @@ export default function Game() {
     const newGuestHp= upd["state/guestHp"] ?? cur.state.guestHp;
     if(newHostHp<=0||newGuestHp<=0){
       const winner=newGuestHp<=0?cur.players.host:cur.players.guest;
-      if(winner===player.name){notify("🏆 TEBRİKLER! KAZANDIN!");launchConfetti();save({...player,gold:player.gold+500,score:player.score+200});}
-      else notify("😔 Mağlup oldun...");
+      if(winner===player.name){const oldScore=player.arenaScore||0;
+          const newScore=oldScore+200;
+          const oldLeague=getLeague(oldScore);
+          const newLeague=getLeague(newScore);
+          const promoted=newLeague.name!==oldLeague.name;
+          if(promoted) notify(`🎉 TERFİ! ${newLeague.icon} ${newLeague.name} Ligine çıktın!`);
+          else notify("🏆 KAZANDIN! +200 Arena Puan");
+          launchConfetti();
+          save({...player,gold:player.gold+500,score:player.score+200,arenaScore:newScore,arenaGames:(player.arenaGames||0)+1});}
+      else {
+        const loseScore=Math.max(0,(player.arenaScore||0)-50);
+        notify("😔 Mağlup oldun... -50 Arena Puan");
+        save({...player,arenaScore:loseScore,arenaGames:(player.arenaGames||0)+1});
+      }
       setTimeout(async()=>{
         await set(ref(db,`matches/${matchId}`),null);
         setPvp({matchId:null,matchData:null,side:null});
@@ -672,6 +781,13 @@ export default function Game() {
             </div>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"20px",width:"620px"}}>
+            {isAdmin(player!.name)&&(
+              <div onClick={()=>{loadAdminUsers();setScreen("admin");}}
+                style={{...S.glass,height:"210px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",cursor:"pointer",border:"1px solid #f05",background:"rgba(30,0,0,0.84)",gridColumn:"1/-1"}}>
+                <div style={{fontSize:"48px",marginBottom:"10px"}}>🔧</div>
+                <div style={{...S.neon("#f05"),fontSize:"18px",fontWeight:"800"}}>ADMİN PANELİ</div>
+              </div>
+            )}
             {[{id:"map",t:"MACERA",i:"🗺️",c:"#fc0"},{id:"arena",t:"ARENA",i:"⚔️",c:"#f05"},{id:"shop",t:"MARKET",i:"🛒",c:"#0f6"},{id:"inv",t:"ÇANTA",i:"🎒",c:"#00eaff"}].map(m=>(
               <div key={m.id} onClick={()=>{playSound("click");if(m.id==="arena")goToArena();else setScreen(m.id as any);}}
                 style={{...S.glass,height:"210px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",cursor:"pointer",border:`1px solid ${m.c}`,background:"rgba(20,20,30,0.84)"}}>
@@ -746,18 +862,39 @@ export default function Game() {
 
                 {/* Sol: Sıralama */}
                 <div style={{...S.glass,padding:"24px",width:"320px",minWidth:"280px"}}>
-                  <h2 style={{...S.neon("#fc0"),margin:"0 0 16px",textAlign:"center"}}>🏆 SIRALAMA</h2>
+                  <h2 style={{...S.neon("#fc0"),margin:"0 0 8px",textAlign:"center"}}>🏆 ARENA SIRALAMASI</h2>
+                  {player && (()=>{
+                    const myScore=player.arenaScore||0;
+                    const league=getLeague(myScore);
+                    return(
+                      <div style={{textAlign:"center",marginBottom:"12px",padding:"8px",borderRadius:"10px",background:league.bg,border:`1px solid ${league.color}`}}>
+                        <span style={{fontSize:"20px"}}>{league.icon}</span>
+                        <span style={{color:league.color,fontWeight:"800",marginLeft:"6px"}}>{league.name} Ligi</span>
+                        <span style={{color:"#aaa",fontSize:"12px",marginLeft:"8px"}}>{myScore} puan</span>
+                      </div>
+                    );
+                  })()}
                   {leaderboard.length>0 ? (
-                    <div>
+                    <div style={{maxHeight:"320px",overflowY:"auto"}}>
                       {leaderboard.map((u,i)=>(
-                        <div key={u.name} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",marginBottom:"6px",borderRadius:"8px",background:u.name===player?.name?"rgba(0,114,255,0.2)":i<3?"rgba(255,215,0,0.08)":"rgba(255,255,255,0.04)",border:u.name===player?.name?"1px solid #0072ff":"1px solid transparent"}}>
-                          <span style={{fontSize:"13px"}}>{i===0?"👑":i===1?"🥈":i===2?"🥉":"  "} {i+1}. {u.name}</span>
-                          <span style={{color:"#fc0",fontWeight:"700",fontSize:"13px"}}>{u.score}</span>
+                        <div key={u.name} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",marginBottom:"5px",borderRadius:"8px",
+                          background:u.name===player?.name?"rgba(0,114,255,0.25)":i===0?"rgba(255,215,0,0.12)":i===1?"rgba(192,192,192,0.1)":i===2?"rgba(205,127,50,0.1)":"rgba(255,255,255,0.04)",
+                          border:u.name===player?.name?"1px solid #0072ff":i<3?"1px solid rgba(255,215,0,0.3)":"1px solid transparent"}}>
+                          <div style={{display:"flex",alignItems:"center",gap:"6px"}}>
+                            <span style={{fontSize:"16px"}}>{i===0?"👑":i===1?"🥈":i===2?"🥉":"  "}</span>
+                            <div>
+                              <div style={{fontSize:"13px",fontWeight:"700"}}>{getLeague(u.score).icon} {i+1}. {u.name}</div>
+                              <div style={{fontSize:"10px",color:"#aaa"}}>{u.games||0} maç • Lv.{u.lvl} • {getLeague(u.score).name}</div>
+                            </div>
+                          </div>
+                          <span style={{color:"#fc0",fontWeight:"800",fontSize:"14px"}}>{u.score} 🏆</span>
                         </div>
                       ))}
                     </div>
                   ):(
-                    <div style={{textAlign:"center",color:"#aaa",padding:"20px"}}>Yükleniyor...</div>
+                    <div style={{textAlign:"center",color:"#aaa",padding:"20px",fontSize:"13px"}}>
+                      Henüz arena maçı yok.<br/>İlk sen ol!
+                    </div>
                   )}
                   <button style={{...S.btn,width:"100%",marginTop:"12px",padding:"10px",fontSize:"12px",background:"rgba(255,255,255,0.08)"}} onClick={loadLeaderboard}>🔄 YENİLE</button>
                 </div>
@@ -910,10 +1047,33 @@ export default function Game() {
                   {pvp.matchData.state.qs[pvp.matchData.state.qIdx].o.map((o,i)=>{
                     const isHost=pvp.side==="host";
                     const myAns=isHost?pvp.matchData!.state.hostAnswerCorrect:pvp.matchData!.state.guestAnswerCorrect;
+                    const correctIdx=pvp.matchData!.state.qs[pvp.matchData!.state.qIdx].a;
+                    const isMyAnswer=myAns!==1&&myAns!==0 ? false : false; // henüz cevap yok gösterme
+                    const showPvpResult=pvp.matchData!.state.resolving||pvp.matchData!.state.log!=="";
+                    // Sadece resolving bitince (log gelince) doğruyu göster
+                    const justResolved=!pvp.matchData!.state.resolving && pvp.matchData!.state.log!=="";
                     const disabled=myAns!==-1||pvp.matchData!.state.resolving;
+                    const isCorrectBtn=i===correctIdx;
+                    const isMyChosen=myAns!==-1 && false; // idx bilgisi yok PvP'de
+                    let bg="linear-gradient(135deg,#00c6ff,#0072ff)";
+                    let brd="none";
+                    let sc="scale(1)";
+                    if(myAns!==-1 && isCorrectBtn){ bg="linear-gradient(135deg,#11998e,#38ef7d)"; brd="2px solid #0f6"; sc="scale(1.04)"; }
                     return(
-                      <button key={i} style={{...S.btn,padding:"14px",fontSize:15,width:"100%",textTransform:"none",opacity:disabled?0.45:1,cursor:disabled?"not-allowed":"pointer"}}
-                        onClick={()=>pvpAnswer(i)} disabled={disabled}>{o}</button>
+                      <button key={i}
+                        style={{...S.btn,padding:"14px",fontSize:15,width:"100%",textTransform:"none",
+                          background:bg, border:brd, transform:sc,
+                          transition:"all 0.25s ease",
+                          opacity:disabled&&!isCorrectBtn?0.45:1,
+                          cursor:disabled?"not-allowed":"pointer",
+                          boxShadow:myAns!==-1&&isCorrectBtn?"0 0 20px rgba(0,255,100,0.6)":""
+                        }}
+                        onClick={()=>{ if(myAns===-1&&!pvp.matchData!.state.resolving){ playSound(i===correctIdx?"correct":"wrong"); pvpAnswer(i); } }}
+                        disabled={disabled}
+                      >
+                        {myAns!==-1 && isCorrectBtn && <span style={{marginRight:"6px"}}>✅</span>}
+                        {o}
+                      </button>
                     );
                   })}
                 </div>
@@ -985,6 +1145,124 @@ export default function Game() {
               </>
             )}
           </div>
+        </div>
+      )}
+
+      {/* ── ADMİN PANELİ ── */}
+      {screen==="admin"&&isAdmin(player!.name)&&(
+        <div style={{flex:1,overflowY:"auto",padding:"20px",background:"rgba(10,0,0,0.95)"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"20px"}}>
+            <h1 style={{...S.neon("#f05"),margin:0}}>🔧 ADMİN PANELİ</h1>
+            <button style={{...S.btn,...S.btnDanger}} onClick={()=>setScreen("menu")}>← GERİ</button>
+          </div>
+
+          {/* Tab butonları */}
+          <div style={{display:"flex",gap:"10px",marginBottom:"20px"}}>
+            {(["users","questions","matches"] as const).map(tab=>(
+              <button key={tab} style={{...S.btn,background:adminTab===tab?"#f05":"rgba(255,255,255,0.08)",fontSize:"13px"}}
+                onClick={()=>{ setAdminTab(tab); if(tab==="users") loadAdminUsers(); }}>
+                {tab==="users"?"👥 Kullanıcılar":tab==="questions"?"📝 Sorular":"⚔️ Maçlar"}
+              </button>
+            ))}
+          </div>
+
+          {/* KULLANICILAR */}
+          {adminTab==="users"&&(
+            <div>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:"12px"}}>
+                <h2 style={{color:"#fc0",margin:0}}>👥 Tüm Kullanıcılar ({Object.keys(adminUsers).length})</h2>
+                <button style={{...S.btn,background:"rgba(255,255,255,0.1)",fontSize:"12px"}} onClick={loadAdminUsers}>🔄 Yenile</button>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:"12px"}}>
+                {Object.keys(adminUsers).filter(k=>!isAdmin(k)).map(k=>{
+                  const u=adminUsers[k];
+                  const league=getLeague(u.arenaScore||0);
+                  return(
+                    <div key={k} style={{...S.glass,padding:"14px",border:"1px solid rgba(255,0,80,0.2)"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"8px"}}>
+                        <div>
+                          <div style={{fontWeight:"800",fontSize:"16px"}}>{k}</div>
+                          <div style={{fontSize:"12px",color:league.color}}>{league.icon} {league.name} • {u.arenaScore||0} puan</div>
+                        </div>
+                        <button style={{...S.btn,...S.btnDanger,padding:"4px 10px",fontSize:"11px"}} onClick={()=>resetUser(k)}>Sıfırla</button>
+                      </div>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"4px",fontSize:"12px",color:"#aaa"}}>
+                        <span>⚡ Level: <strong style={{color:"#fc0"}}>{u.lvl||1}</strong></span>
+                        <span>🏆 Skor: <strong style={{color:"#0f6"}}>{u.score||0}</strong></span>
+                        <span>⚔️ Arena: <strong style={{color:"#00eaff"}}>{u.arenaGames||0} maç</strong></span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* SORULAR */}
+          {adminTab==="questions"&&(
+            <div>
+              <h2 style={{color:"#fc0",marginTop:0}}>📝 Soru Ekle</h2>
+              <div style={{...S.glass,padding:"20px",marginBottom:"20px",border:"1px solid rgba(0,234,255,0.3)"}}>
+                <input style={{width:"100%",padding:"10px",marginBottom:"10px",borderRadius:"8px",border:"1px solid #444",background:"rgba(255,255,255,0.06)",color:"white",boxSizing:"border-box"}}
+                  placeholder="Soru metni..." value={adminQuestion.q}
+                  onChange={e=>setAdminQuestion(p=>({...p,q:e.target.value}))}/>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px",marginBottom:"10px"}}>
+                  {adminQuestion.o.map((opt,i)=>(
+                    <input key={i} style={{padding:"8px",borderRadius:"8px",border:`1px solid ${adminQuestion.a===i?"#0f6":"#444"}`,background:"rgba(255,255,255,0.06)",color:"white"}}
+                      placeholder={`Şık ${i+1}`} value={opt}
+                      onChange={e=>setAdminQuestion(p=>({...p,o:p.o.map((x,j)=>j===i?e.target.value:x)}))}
+                      onClick={()=>setAdminQuestion(p=>({...p,a:i}))}/>
+                  ))}
+                </div>
+                <div style={{fontSize:"12px",color:"#aaa",marginBottom:"10px"}}>💡 Doğru cevap şıkına tıkla (şu an: Şık {adminQuestion.a+1})</div>
+                <div style={{display:"flex",gap:"10px",alignItems:"center"}}>
+                  <select style={{padding:"8px",borderRadius:"8px",border:"1px solid #444",background:"#111",color:"white"}}
+                    value={adminQuestion.topic} onChange={e=>setAdminQuestion(p=>({...p,topic:e.target.value}))}>
+                    <option value="genel">Genel</option>
+                    <option value="iletisim">İletişim</option>
+                    <option value="hikaye">Hikaye</option>
+                    <option value="siir">Şiir</option>
+                  </select>
+                  <button style={{...S.btn,...S.btnSuccess,flex:1}} onClick={addCustomQuestion}>✅ SORU EKLE</button>
+                </div>
+              </div>
+              <h3 style={{color:"#aaa"}}>Eklenen Özel Sorular ({customQs.length})</h3>
+              {customQs.map((q,i)=>(
+                <div key={i} style={{...S.glass,padding:"12px",marginBottom:"8px",fontSize:"13px"}}>
+                  <div style={{fontWeight:"700",marginBottom:"4px"}}>{q.q}</div>
+                  <div style={{display:"flex",gap:"8px",flexWrap:"wrap"}}>
+                    {q.o.map((o,j)=>(
+                      <span key={j} style={{padding:"3px 8px",borderRadius:"6px",background:j===q.a?"rgba(0,255,100,0.2)":"rgba(255,255,255,0.06)",border:j===q.a?"1px solid #0f6":"1px solid #333",fontSize:"12px"}}>{o}</span>
+                    ))}
+                  </div>
+                  <div style={{color:"#aaa",fontSize:"11px",marginTop:"4px"}}>Konu: {q.topic}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* MAÇLAR */}
+          {adminTab==="matches"&&(
+            <div>
+              <h2 style={{color:"#fc0",marginTop:0}}>⚔️ Aktif Maçlar</h2>
+              <button style={{...S.btn,marginBottom:"16px"}} onClick={async()=>{
+                const snap=await get(ref(db,"matches"));
+                const all=snap.val()||{};
+                setAdminUsers(prev=>({...prev,__matches__:all}));
+              }}>🔄 Maçları Yükle</button>
+              {adminUsers.__matches__ && Object.keys(adminUsers.__matches__).map(k=>{
+                const m=adminUsers.__matches__[k];
+                return(
+                  <div key={k} style={{...S.glass,padding:"12px",marginBottom:"8px"}}>
+                    <div style={{fontWeight:"700"}}>🎮 {m.players?.host} vs {m.players?.guest||"Bekleniyor..."}</div>
+                    <div style={{fontSize:"12px",color:"#aaa",marginTop:"4px"}}>
+                      HP: {m.state?.hostHp} vs {m.state?.guestHp} | Soru: {m.state?.qIdx} | Başladı: {m.state?.started?"Evet":"Hayır"}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
