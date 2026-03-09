@@ -149,14 +149,15 @@ export default function Game() {
   const [showAnswer, setShowAnswer] = useState<{correctIdx:number;chosenIdx:number;correct:boolean}|null>(null);
   const [leaderboard, setLeaderboard] = useState<{name:string;score:number;lvl:number;games?:number}[]>([]);
 
+  const [gameLocked,    setGameLocked]    = useState(false);
   // Admin panel states
   const [adminUsers,    setAdminUsers]    = useState<{[k:string]:any}>({});
   const [adminQuestion, setAdminQuestion] = useState({ q:"", o:["","","",""], a:0, topic:"genel" });
-  const [adminTab,      setAdminTab]      = useState<"users"|"questions"|"matches">("users");
+  const [adminTab,      setAdminTab]      = useState<"users"|"questions"|"matches"|"system">("users");
   const [customQs,      setCustomQs]      = useState<Q[]>([]);
 
   // Arena state - temiz ve bağımsız
-  const [arenaScreen, setArenaScreen] = useState<"menu"|"rules"|"searching"|"battle">("menu");
+  const [arenaScreen, setArenaScreen] = useState<"menu"|"rules"|"searching"|"battle"|"ligmap">("menu");
   const [searchTime,  setSearchTime]  = useState(50);
   const [pvp,         setPvp]         = useState<PvPState>({ matchId:null, matchData:null, side:null });
 
@@ -283,7 +284,13 @@ export default function Game() {
     } catch(e){}
   };
 
-  useEffect(() => { setMounted(true); loadLeaderboard(); loadCustomQuestions(); }, []);
+  useEffect(() => {
+    setMounted(true); loadLeaderboard(); loadCustomQuestions();
+    // Oyun kilidi dinle
+    const lockRef = ref(db,"settings/gameLocked");
+    onValue(lockRef,(snap)=>{ setGameLocked(!!snap.val()); });
+    return ()=>off(lockRef);
+  }, []);
 
   // ── AUTH ─────────────────────────────────────────────────────────────────
   const handleAuth = () => {
@@ -355,7 +362,11 @@ export default function Game() {
           if(botCorrect){
             const np={...player!}; np.hp=Math.max(0,np.hp-botDmg); setPlayer(np);
             nb.log=`✅ DOĞRU! ${dmg} Hasar! | 🤖 BOT DA DOĞRU: -${botDmg} Can`;
-            if(np.hp<=0){np.hp=pStats.maxHp;save(np);notify("YENİLDİN...");setBattle({active:false,enemyHp:0,maxEnemyHp:0,qs:[],qIdx:0,timer:20,combo:0,log:null,wait:false,dmgText:null,shaking:false});setScreen("menu");return;}
+            if(np.hp<=0){np.hp=pStats.maxHp;
+          const isBotArena2=nb.level?.id==="pvp-bot";
+          if(isBotArena2){np.arenaScore=Math.max(0,(np.arenaScore||0)-30);np.arenaGames=(np.arenaGames||0)+1;notify("😔 Bota yenildin... -30 Arena Puan");}
+          else notify("YENİLDİN...");
+          save(np);setBattle({active:false,enemyHp:0,maxEnemyHp:0,qs:[],qIdx:0,timer:20,combo:0,log:null,wait:false,dmgText:null,shaking:false});setScreen("menu");return;}
           } else {
             nb.log=`✅ DOĞRU! ${dmg} Hasar! | 🤖 Bot Iskaladı`;
           }
@@ -364,14 +375,27 @@ export default function Game() {
         // Oyuncu yanlış yaptı - kendine hasar
         const np={...player!}; np.hp=Math.max(0,np.hp-20); setPlayer(np);
         nb.log=`❌ YANLIŞ! -20 Can`; nb.combo=0;
-        if(np.hp<=0){np.hp=pStats.maxHp;save(np);notify("YENİLDİN...");setBattle({active:false,enemyHp:0,maxEnemyHp:0,qs:[],qIdx:0,timer:20,combo:0,log:null,wait:false,dmgText:null,shaking:false});setScreen("menu");return;}
+        if(np.hp<=0){np.hp=pStats.maxHp;
+          const isBotArena2=nb.level?.id==="pvp-bot";
+          if(isBotArena2){np.arenaScore=Math.max(0,(np.arenaScore||0)-30);np.arenaGames=(np.arenaGames||0)+1;notify("😔 Bota yenildin... -30 Arena Puan");}
+          else notify("YENİLDİN...");
+          save(np);setBattle({active:false,enemyHp:0,maxEnemyHp:0,qs:[],qIdx:0,timer:20,combo:0,log:null,wait:false,dmgText:null,shaking:false});setScreen("menu");return;}
         // Bot sırası - yanlış yapınca da bot cevaplar
         if(botMatch) {
           const botCorrect=Math.random()>0.4;
           if(botCorrect){
             nb.enemyHp=Math.max(0,nb.enemyHp-botDmg);
             nb.log=`❌ YANLIŞ! -20 Can | 🤖 Bot Doğru: -${botDmg} Düşman Can`;
-            if(nb.enemyHp<=0){playSound("win");notify("🏆 ZAFER!");launchConfetti();const np2={...player!};np2.gold+=100;np2.xp+=30;np2.score+=50;np2.hp=pStats.maxHp;save(np2);setScreen("menu");return;}
+            if(nb.enemyHp<=0){
+              playSound("win");launchConfetti();
+              const np2={...player!};np2.gold+=100;np2.xp+=30;np2.score+=50;np2.hp=pStats.maxHp;
+              const oldAS=np2.arenaScore||0; const newAS=oldAS+100;
+              const ol=getLeague(oldAS); const nl=getLeague(newAS);
+              if(nl.name!==ol.name) notify(\`🎉 TERFİ! \${nl.icon} \${nl.name} Ligine çıktın!\`);
+              else notify("🏆 BOT YENİLDİ! +100 Arena Puan");
+              np2.arenaScore=newAS; np2.arenaGames=(np2.arenaGames||0)+1;
+              save(np2);setScreen("menu");return;
+            }
           } else {
             nb.log=`❌ YANLIŞ! -20 Can | 🤖 Bot da Iskaladı`;
           }
@@ -529,6 +553,14 @@ export default function Game() {
           const m:MatchData = all[k];
           if(k===currentPvp.matchId) continue;
           if(m?.players && (!m.players.guest||m.players.guest==="") && m.players.host!==player.name){
+            // Dengeli eşleştirme: host'un puanına bak
+            const hostData = (await get(ref(db,`users/${m.players.host}`))).val();
+            const hostScore = hostData?.arenaScore||0;
+            const myScore   = player.arenaScore||0;
+            const myLeagueIdx   = LEAGUES.findIndex(l=>myScore>=l.min&&myScore<=l.max);
+            const hostLeagueIdx = LEAGUES.findIndex(l=>hostScore>=l.min&&hostScore<=l.max);
+            const isLastTwo = myLeagueIdx>=LEAGUES.length-2 || hostLeagueIdx>=LEAGUES.length-2;
+            if(!isLastTwo && Math.abs(myLeagueIdx-hostLeagueIdx)>1) continue; // 1 lig farktan fazla - geç
             // Maça katıl
             const guestHp = getStats(player).maxHp;
             await update(ref(db,`matches/${k}/players`),{guest:player.name});
@@ -645,8 +677,15 @@ export default function Game() {
     // Zafer kontrolü
     const newHostHp = upd["state/hostHp"] ?? cur.state.hostHp;
     const newGuestHp= upd["state/guestHp"] ?? cur.state.guestHp;
-    if(newHostHp<=0||newGuestHp<=0){
-      const winner=newGuestHp<=0?cur.players.host:cur.players.guest;
+    // Terk kontrolü - log'da terk varsa anında bitir
+    const terkVar = log.includes("terk etti");
+    if(terkVar) {
+      const terkEden = log.includes(cur.players.host+"terk") ? cur.players.host : cur.players.guest;
+    }
+    if(newHostHp<=0||newGuestHp<=0||terkVar){
+      const winner = terkVar
+        ? (log.includes("Host") ? cur.players.guest : cur.players.host)
+        : (newGuestHp<=0?cur.players.host:cur.players.guest);
       if(winner===player.name){const oldScore=player.arenaScore||0;
           const newScore=oldScore+200;
           const oldLeague=getLeague(oldScore);
@@ -660,6 +699,10 @@ export default function Game() {
         const loseScore=Math.max(0,(player.arenaScore||0)-50);
         notify("😔 Mağlup oldun... -50 Arena Puan");
         save({...player,arenaScore:loseScore,arenaGames:(player.arenaGames||0)+1});
+      }
+      if(log.includes("terk") && winner===player.name) {
+        notify("🏳️ Rakip terk etti! Zafer senindir! 🏆");
+        launchConfetti();
       }
       setTimeout(async()=>{
         await set(ref(db,`matches/${matchId}`),null);
@@ -695,10 +738,11 @@ export default function Game() {
     if(!player) return;
     const stats=getStats(player);
     setBotMatch(true); setTurn("p1");
+    notify("🤖 Bot ile eşleştin! Kazanırsan +100 Arena Puan alırsın.");
     setBattle({
       active:true,
       region:{id:"arena",name:"ARENA",x:0,y:0,type:"all",bg:ARENA_BG,unlockC:"king",levels:[]},
-      level:{id:"pvp-bot",t:"Bot Arena",hp:stats.maxHp,en:"🤖 Bot",ico:"🤖",diff:"Arena"},
+      level:{id:"pvp-bot",t:"Bot Arena",hp:stats.maxHp,en:"🤖 Bot Rakip",ico:"🤖",diff:"Arena"},
       enemyHp:stats.maxHp, maxEnemyHp:stats.maxHp,
       qs:shuffle(QUESTIONS).slice(0,25), qIdx:0, timer:20, combo:0,
       log:"🤖 Bot ile savaş başlıyor!", wait:false, dmgText:null, shaking:false,
@@ -708,11 +752,35 @@ export default function Game() {
 
   // ── Maçtan ayrıl ────────────────────────────────────────────────────────
   const leaveMatch = async () => {
-    await cleanupPvP(pvp.matchId, true);
+    const {matchId,matchData,side}=pvpRef.current;
+    if(matchId && matchData && player) {
+      // Rakibi kazandır - can sıfırla
+      const isHost=side==="host";
+      try {
+        const terkLog = isHost
+          ? `🏳️ Host terk etti! ${cur.players?.guest||"Rakip"} KAZANDI!`
+          : `🏳️ Guest terk etti! ${cur.players?.host||"Rakip"} KAZANDI!`;
+        await update(ref(db,`matches/${matchId}/state`),{
+          ...(isHost ? {hostHp:0} : {guestHp:0}),
+          log: terkLog,
+          resolving: true,
+        });
+        // Host resolve'u tetikle
+        const snap2 = await get(ref(db,`matches/${matchId}`));
+        const cur2 = snap2.val();
+        if(cur2 && isHost===false) {
+          // Guest terk etti, host resolve eder - bekle
+        }
+        // -100 puan ceza
+        const loseScore=Math.max(0,(player.arenaScore||0)-100);
+        save({...player,arenaScore:loseScore,arenaGames:(player.arenaGames||0)+1});
+        notify("Maçtan ayrıldın. -100 Arena Puan (terk cezası)");
+      } catch(e){}
+    }
+    await cleanupPvP(matchId, true);
     setPvp({matchId:null,matchData:null,side:null});
     setBattle({active:false,enemyHp:0,maxEnemyHp:0,qs:[],qIdx:0,timer:20,combo:0,log:null,wait:false,dmgText:null,shaking:false});
     setArenaScreen("menu"); setScreen("arena");
-    notify("Maçtan ayrıldın.");
   };
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -732,6 +800,17 @@ export default function Game() {
   `;
 
   if(!mounted) return <div style={{height:"100vh",background:"#000"}}/>;
+
+  // Bakım modu kontrolü - admin değilse engelle
+  if(gameLocked && player && !isAdmin(player.name)) return (
+    <div style={{height:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"#0a0a0f",color:"white",padding:"40px",textAlign:"center"}}>
+      <style>{globalStyles}</style>
+      <div style={{fontSize:"80px",marginBottom:"20px"}}>🔧</div>
+      <h1 style={{...S.neon("#f05"),fontSize:"32px"}}>BAKIM MODU</h1>
+      <p style={{color:"#aaa",fontSize:"16px",maxWidth:"400px"}}>Oyun şu an bakımda. Yakında geri döneceğiz!</p>
+      <button style={{...S.btn,...S.btnDanger,marginTop:"20px"}} onClick={()=>{setPlayer(null);setScreen("auth");}}>ÇIKIŞ YAP</button>
+    </div>
+  );
 
   // ── AUTH ekranı ──────────────────────────────────────────────────────────
   if(screen==="auth") return (
@@ -874,28 +953,43 @@ export default function Game() {
                       </div>
                     );
                   })()}
-                  {leaderboard.length>0 ? (
-                    <div style={{maxHeight:"320px",overflowY:"auto"}}>
-                      {leaderboard.map((u,i)=>(
-                        <div key={u.name} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",marginBottom:"5px",borderRadius:"8px",
-                          background:u.name===player?.name?"rgba(0,114,255,0.25)":i===0?"rgba(255,215,0,0.12)":i===1?"rgba(192,192,192,0.1)":i===2?"rgba(205,127,50,0.1)":"rgba(255,255,255,0.04)",
-                          border:u.name===player?.name?"1px solid #0072ff":i<3?"1px solid rgba(255,215,0,0.3)":"1px solid transparent"}}>
-                          <div style={{display:"flex",alignItems:"center",gap:"6px"}}>
-                            <span style={{fontSize:"16px"}}>{i===0?"👑":i===1?"🥈":i===2?"🥉":"  "}</span>
-                            <div>
-                              <div style={{fontSize:"13px",fontWeight:"700"}}>{getLeague(u.score).icon} {i+1}. {u.name}</div>
-                              <div style={{fontSize:"10px",color:"#aaa"}}>{u.games||0} maç • Lv.{u.lvl} • {getLeague(u.score).name}</div>
-                            </div>
+                  {(()=>{
+                    const myRank=leaderboard.findIndex(u=>u.name===player?.name);
+                    return leaderboard.length>0 ? (
+                      <div>
+                        {myRank>=0&&(
+                          <div style={{padding:"8px 12px",marginBottom:"10px",borderRadius:"10px",background:"rgba(0,114,255,0.2)",border:"1px solid #0072ff",fontSize:"13px",textAlign:"center"}}>
+                            📍 Senin sıran: <strong style={{color:"#fc0"}}>#{myRank+1}</strong> • {leaderboard[myRank]?.score||0} puan
                           </div>
-                          <span style={{color:"#fc0",fontWeight:"800",fontSize:"14px"}}>{u.score} 🏆</span>
+                        )}
+                        <div style={{maxHeight:"340px",overflowY:"auto"}}>
+                          {leaderboard.map((u,i)=>{
+                            const lg=getLeague(u.score);
+                            const isMe=u.name===player?.name;
+                            return(
+                              <div key={u.name} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",marginBottom:"5px",borderRadius:"8px",
+                                background:isMe?"rgba(0,114,255,0.25)":i===0?"rgba(255,215,0,0.12)":i===1?"rgba(192,192,192,0.1)":i===2?"rgba(205,127,50,0.1)":"rgba(255,255,255,0.04)",
+                                border:isMe?"2px solid #0072ff":i<3?"1px solid rgba(255,215,0,0.25)":"1px solid transparent"}}>
+                                <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
+                                  <span style={{fontSize:"18px",minWidth:"24px"}}>{i===0?"👑":i===1?"🥈":i===2?"🥉":lg.icon}</span>
+                                  <div>
+                                    <div style={{fontSize:"13px",fontWeight:"800",color:isMe?"#00eaff":"#fff"}}>{i+1}. {u.name}{isMe?" (Sen)":""}</div>
+                                    <div style={{fontSize:"10px",color:lg.color}}>{lg.name} • {u.games||0} maç • Lv.{u.lvl}</div>
+                                  </div>
+                                </div>
+                                <span style={{color:"#fc0",fontWeight:"800",fontSize:"14px"}}>{u.score}🏆</span>
+                              </div>
+                            );
+                          })}
                         </div>
-                      ))}
-                    </div>
-                  ):(
-                    <div style={{textAlign:"center",color:"#aaa",padding:"20px",fontSize:"13px"}}>
-                      Henüz arena maçı yok.<br/>İlk sen ol!
-                    </div>
-                  )}
+                      </div>
+                    ):(
+                      <div style={{textAlign:"center",color:"#aaa",padding:"24px",fontSize:"13px"}}>
+                        <div style={{fontSize:"40px",marginBottom:"8px"}}>🏟️</div>
+                        Henüz arena maçı yok.<br/>İlk sen ol!
+                      </div>
+                    );
+                  })()}
                   <button style={{...S.btn,width:"100%",marginTop:"12px",padding:"10px",fontSize:"12px",background:"rgba(255,255,255,0.08)"}} onClick={loadLeaderboard}>🔄 YENİLE</button>
                 </div>
 
@@ -933,6 +1027,63 @@ export default function Game() {
             )}
 
             {/* ── RAKİP ARANYOR ── */}
+            {arenaScreen==="ligmap"&&(
+              <div style={{padding:"20px",overflowY:"auto"}}>
+                <h2 style={{...S.neon("#fc0"),textAlign:"center",marginBottom:"20px"}}>🗺️ LİG HARİTASI</h2>
+                <div style={{display:"flex",flexDirection:"column",gap:"12px",alignItems:"center"}}>
+                  {LEAGUES.map((lg,i)=>{
+                    const myScore=player?.arenaScore||0;
+                    const isCurrentLig=myScore>=lg.min&&myScore<=lg.max;
+                    const isPassed=myScore>lg.max;
+                    const isLocked=myScore<lg.min;
+                    return(
+                      <div key={lg.name} style={{
+                        width:"100%",maxWidth:"420px",padding:"16px 20px",borderRadius:"16px",
+                        background:isCurrentLig?lg.bg:isPassed?"rgba(255,255,255,0.04)":"rgba(0,0,0,0.3)",
+                        border:`2px solid ${isCurrentLig?lg.color:isPassed?"rgba(255,255,255,0.15)":"rgba(255,255,255,0.06)"}`,
+                        opacity:isLocked?0.5:1,
+                        transform:isCurrentLig?"scale(1.03)":"scale(1)",
+                        transition:"all 0.3s ease",
+                        position:"relative"
+                      }}>
+                        {isCurrentLig&&<div style={{position:"absolute",top:"-10px",right:"14px",background:"#fc0",color:"#000",fontSize:"11px",fontWeight:"800",padding:"2px 10px",borderRadius:"20px"}}>SEN BURADASIN</div>}
+                        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                          <div style={{display:"flex",alignItems:"center",gap:"12px"}}>
+                            <span style={{fontSize:"36px"}}>{lg.icon}</span>
+                            <div>
+                              <div style={{fontWeight:"800",fontSize:"18px",color:lg.color}}>{lg.name} Ligi</div>
+                              <div style={{fontSize:"12px",color:"#aaa"}}>{lg.min} - {lg.max===Infinity?"∞":lg.max} puan</div>
+                            </div>
+                          </div>
+                          <div style={{textAlign:"right"}}>
+                            {isPassed&&<div style={{color:"#0f6",fontSize:"12px",fontWeight:"700"}}>✅ Geçildi</div>}
+                            {isCurrentLig&&<div style={{color:lg.color,fontSize:"13px",fontWeight:"800"}}>{myScore} / {lg.max===Infinity?"∞":lg.max}</div>}
+                            {isLocked&&<div style={{color:"#666",fontSize:"12px"}}>🔒 Kilitli</div>}
+                          </div>
+                        </div>
+                        {isCurrentLig&&lg.max!==Infinity&&(
+                          <div style={{marginTop:"10px"}}>
+                            <div style={{...{height:"6px",borderRadius:"4px",background:"rgba(255,255,255,0.1)",overflow:"hidden"}}}>
+                              <div style={{height:"100%",borderRadius:"4px",background:lg.color,width:`${Math.min(100,((myScore-lg.min)/(lg.max-lg.min))*100)}%`,transition:"width 0.5s ease"}}/>
+                            </div>
+                            <div style={{fontSize:"11px",color:"#aaa",marginTop:"4px",textAlign:"right"}}>
+                              Sonraki lig için {lg.max-myScore} puan daha
+                            </div>
+                          </div>
+                        )}
+                        {lg.name==="Efsane"&&isCurrentLig&&(
+                          <div style={{marginTop:"8px",color:"#fc0",fontSize:"13px",fontWeight:"700",textAlign:"center"}}>
+                            👑 EN YÜKSEK LİGDESİN! Tebrikler!
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <button style={{...S.btn,marginTop:"20px",width:"100%"}} onClick={()=>setArenaScreen("menu")}>← GERİ</button>
+              </div>
+            )}
+
             {arenaScreen==="searching"&&(
               <div style={{...S.glass,padding:"48px",width:"420px",textAlign:"center"}}>
                 <div style={{fontSize:"72px",marginBottom:"16px",animation:"spin 2s linear infinite",display:"inline-block"}}>⚔️</div>
@@ -966,10 +1117,34 @@ export default function Game() {
             {/* Düşman */}
             <div style={{textAlign:"center"}}>
               <div style={{fontSize:"120px",filter:"drop-shadow(0 0 30px #f05)"}}>{battle.level?.ico}</div>
-              <div style={{...S.glass,padding:"10px 20px",marginTop:"10px",display:"inline-block"}}>
-                <div style={{fontWeight:"800",fontSize:"20px"}}>{battle.level?.en}</div>
-                <div style={S.bar}><div style={{width:`${Math.max(0,(battle.enemyHp/battle.maxEnemyHp)*100)}%`,height:"100%",background:"linear-gradient(90deg,#f05,#ff8)"}}/></div>
-                <div style={{fontSize:"12px",color:"#aaa",marginTop:"4px"}}>{Math.max(0,battle.enemyHp)} / {battle.maxEnemyHp}</div>
+              <div style={{...S.glass,padding:"10px 20px",marginTop:"10px",display:"inline-block",minWidth:"160px"}}>
+                <div style={{fontWeight:"800",fontSize:"16px"}}>{battle.level?.en}</div>
+                {(()=>{
+                  // PvP modunda Firebase'den gerçek HP al
+                  const pvpHp = pvp.matchId&&pvp.matchData ? (pvp.side==="host"?pvp.matchData.state.guestHp:pvp.matchData.state.hostHp) : null;
+                  const pvpMaxHp = pvp.matchId&&pvp.matchData ? (pvp.side==="host"?getStats(player!).maxHp:getStats(player!).maxHp) : null;
+                  const dispHp = pvpHp!==null ? pvpHp : battle.enemyHp;
+                  const dispMax = pvpMaxHp!==null ? pvpMaxHp : battle.maxEnemyHp;
+                  const pct = dispMax>0 ? dispHp/dispMax : 0;
+                  const leagueIcon = pvp.matchId ? getLeague(0).icon : null;
+                  return (<>
+                    {pvp.matchId&&pvp.matchData&&(
+                      <div style={{fontSize:"11px",color:"#fc0",marginBottom:"4px"}}>
+                        {getLeague(0).icon} Arena Rakibi
+                      </div>
+                    )}
+                    <div style={{...S.bar,width:"160px"}}>
+                      <div style={{width:`${Math.max(0,pct*100)}%`,height:"100%",
+                        background: pct>0.5?"linear-gradient(90deg,#f05,#ff8)":pct>0.25?"linear-gradient(90deg,#f80,#fc0)":"linear-gradient(90deg,#f00,#f55)",
+                        transition:"width 0.5s ease"
+                      }}/>
+                    </div>
+                    <div style={{fontSize:"13px",color:"#aaa",marginTop:"4px",fontWeight:"700"}}>
+                      {Math.max(0,dispHp)} / {dispMax}
+                      {pct<0.25&&<span style={{color:"#f05",marginLeft:"6px"}}>⚠️</span>}
+                    </div>
+                  </>);
+                })()}
               </div>
             </div>
 
@@ -1010,10 +1185,22 @@ export default function Game() {
             {/* Oyuncu */}
             <div style={{textAlign:"center"}}>
               <div style={{fontSize:"120px",filter:"drop-shadow(0 0 30px #00eaff)"}}>{COSTUMES[player!.currentCostume].i}</div>
-              <div style={{...S.glass,padding:"10px 20px",marginTop:"10px",display:"inline-block"}}>
-                <div style={{fontWeight:"800",fontSize:"20px"}}>{player?.name}</div>
-                <div style={S.bar}><div style={{width:`${(player!.hp/getStats(player!).maxHp)*100}%`,height:"100%",background:"linear-gradient(90deg,#0f6,#00eaff)"}}/></div>
-                <div style={{fontSize:"12px",color:"#aaa",marginTop:"4px"}}>{player?.hp} / {getStats(player!).maxHp}</div>
+              <div style={{...S.glass,padding:"10px 20px",marginTop:"10px",display:"inline-block",minWidth:"160px"}}>
+                <div style={{fontWeight:"800",fontSize:"16px"}}>{player?.name}</div>
+                <div style={{fontSize:"11px",color:getLeague(player?.arenaScore||0).color,marginBottom:"4px"}}>
+                  {getLeague(player?.arenaScore||0).icon} {getLeague(player?.arenaScore||0).name}
+                </div>
+                <div style={{...S.bar,width:"160px"}}>
+                  <div style={{width:`${Math.max(0,(player!.hp/getStats(player!).maxHp)*100)}%`,height:"100%",
+                    background: player!.hp/getStats(player!).maxHp>0.5?"linear-gradient(90deg,#0f6,#00eaff)":
+                      player!.hp/getStats(player!).maxHp>0.25?"linear-gradient(90deg,#fc0,#f80)":"linear-gradient(90deg,#f00,#f55)",
+                    transition:"width 0.4s ease"
+                  }}/>
+                </div>
+                <div style={{fontSize:"13px",color:"#aaa",marginTop:"4px",fontWeight:"700"}}>
+                  {Math.max(0,player!.hp)} / {getStats(player!).maxHp}
+                  {player!.hp/getStats(player!).maxHp<0.25&&<span style={{color:"#f05",marginLeft:"6px"}}>⚠️</span>}
+                </div>
               </div>
             </div>
           </div>
@@ -1158,10 +1345,10 @@ export default function Game() {
 
           {/* Tab butonları */}
           <div style={{display:"flex",gap:"10px",marginBottom:"20px"}}>
-            {(["users","questions","matches"] as const).map(tab=>(
+            {(["users","questions","matches","system"] as const).map(tab=>(
               <button key={tab} style={{...S.btn,background:adminTab===tab?"#f05":"rgba(255,255,255,0.08)",fontSize:"13px"}}
                 onClick={()=>{ setAdminTab(tab); if(tab==="users") loadAdminUsers(); }}>
-                {tab==="users"?"👥 Kullanıcılar":tab==="questions"?"📝 Sorular":"⚔️ Maçlar"}
+                {tab==="users"?"👥 Kullanıcılar":tab==="questions"?"📝 Sorular":tab==="matches"?"⚔️ Maçlar":"⚙️ Sistem"}
               </button>
             ))}
           </div>
@@ -1227,6 +1414,24 @@ export default function Game() {
                 </div>
               </div>
               <h3 style={{color:"#aaa"}}>Eklenen Özel Sorular ({customQs.length})</h3>
+              <h3 style={{color:"#aaa",marginTop:"24px"}}>📚 Oyundaki Tüm Sorular ({QUESTIONS.length})</h3>
+              <div style={{maxHeight:"300px",overflowY:"auto"}}>
+                {QUESTIONS.map((q,i)=>(
+                  <div key={i} style={{...S.glass,padding:"10px",marginBottom:"6px",fontSize:"12px",border:"1px solid rgba(255,255,255,0.08)"}}>
+                    <div style={{fontWeight:"700",marginBottom:"4px",color:"#fc0"}}>{i+1}. {q.q}</div>
+                    <div style={{display:"flex",gap:"6px",flexWrap:"wrap"}}>
+                      {q.o.map((o,j)=>(
+                        <span key={j} style={{padding:"2px 8px",borderRadius:"6px",
+                          background:j===q.a?"rgba(0,255,100,0.2)":"rgba(255,255,255,0.06)",
+                          border:j===q.a?"1px solid #0f6":"1px solid #333",fontSize:"11px"}}>
+                          {j===q.a?"✅ ":""}{o}
+                        </span>
+                      ))}
+                    </div>
+                    <div style={{color:"#555",fontSize:"10px",marginTop:"3px"}}>Konu: {q.topic}</div>
+                  </div>
+                ))}
+              </div>
               {customQs.map((q,i)=>(
                 <div key={i} style={{...S.glass,padding:"12px",marginBottom:"8px",fontSize:"13px"}}>
                   <div style={{fontWeight:"700",marginBottom:"4px"}}>{q.q}</div>
@@ -1238,6 +1443,47 @@ export default function Game() {
                   <div style={{color:"#aaa",fontSize:"11px",marginTop:"4px"}}>Konu: {q.topic}</div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* SİSTEM */}
+          {adminTab==="system"&&(
+            <div>
+              <h2 style={{color:"#fc0",marginTop:0}}>⚙️ Sistem Yönetimi</h2>
+
+              {/* Bakım modu */}
+              <div style={{...S.glass,padding:"20px",marginBottom:"20px",border:"1px solid rgba(255,0,80,0.3)"}}>
+                <h3 style={{margin:"0 0 12px",color:"#f05"}}>🔧 Bakım Modu</h3>
+                <p style={{color:"#aaa",fontSize:"13px",margin:"0 0 14px"}}>Açıkken adminler dışındaki tüm oyuncular oyuna giremez.</p>
+                <button style={{...S.btn,background:gameLocked?"#f05":"#0f6",fontSize:"15px",fontWeight:"800",width:"100%"}}
+                  onClick={async()=>{
+                    const newVal=!gameLocked;
+                    await set(ref(db,"settings/gameLocked"),newVal);
+                    notify(newVal?"🔧 Bakım modu AÇILDI":"✅ Bakım modu KAPATILDI");
+                  }}>
+                  {gameLocked?"✅ BAKIM MODU KAPALI YAP":"🔧 BAKIM MODU AÇ"}
+                </button>
+              </div>
+
+              {/* Hesap silme */}
+              <div style={{...S.glass,padding:"20px",border:"1px solid rgba(255,0,80,0.2)"}}>
+                <h3 style={{margin:"0 0 12px",color:"#f05"}}>🗑️ Hesap Sil</h3>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:"8px"}}>
+                  {Object.keys(adminUsers).filter(k=>!isAdmin(k)).map(k=>(
+                    <div key={k} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",background:"rgba(255,255,255,0.04)",borderRadius:"8px"}}>
+                      <span style={{fontSize:"13px"}}>{k}</span>
+                      <button style={{...S.btn,...S.btnDanger,padding:"4px 10px",fontSize:"11px"}}
+                        onClick={async()=>{
+                          if(!confirm(`"${k}" silinsin mi?`)) return;
+                          await set(ref(db,\`users/\${k}\`),null);
+                          localStorage.removeItem(SAVE_KEY+k);
+                          notify(\`\${k} silindi!\`);
+                          loadAdminUsers();
+                        }}>Sil</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
 
