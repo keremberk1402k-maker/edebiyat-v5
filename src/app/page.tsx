@@ -28,8 +28,14 @@ type Player = {
   name:string; pass:string; hp:number; maxHp:number; gold:number; xp:number; maxXp:number; lvl:number;
   inventory:Item[]; equipped:{wep:Item|null;arm:Item|null}; jokers:{[k:string]:number};
   mistakes:string[]; score:number; unlockedRegions:string[]; regionProgress:{[k:string]:number};
-  unlockedCostumes:string[]; currentCostume:string; tutorialSeen:boolean; arenaRulesSeen?:boolean; arenaScore?:number; arenaGames?:number;
+  unlockedCostumes:string[]; currentCostume:string; tutorialSeen:boolean; arenaRulesSeen?:boolean;
+  arenaScore?:number; arenaGames?:number;
+  battleWins?:number; battleLoses?:number; totalBattles?:number;
+  friends?:string[]; classCode?:string;
+  badges?:string[];
 };
+type FriendReq = { from:string; to:string; status:"pending"|"accepted"; ts:number };
+type ClassRoom = { code:string; name:string; owner:string; members:string[]; createdAt:number };
 type BattleState = {
   active:boolean; region?:Region; level?:Level; enemyHp:number; maxEnemyHp:number;
   qs:Q[]; qIdx:number; timer:number; combo:number; log:string|null;
@@ -132,12 +138,35 @@ const S = {
 };
 
 const ARENA_BG = "https://images.unsplash.com/photo-1514539079130-25950c84af65?w=1000";
+
+// ─── ROZET SİSTEMİ ──────────────────────────────────────────────────────────
+const BADGES:{[id:string]:{icon:string;name:string;desc:string;check:(p:Player)=>boolean}} = {
+  ilk_adim:   { icon:"👶", name:"İlk Adım",      desc:"İlk savaşını kazandın",           check:p=>(p.battleWins||0)>=1 },
+  savasci:    { icon:"⚔️", name:"Savaşçı",        desc:"10 savaş kazandın",               check:p=>(p.battleWins||0)>=10 },
+  efsane_s:   { icon:"🏆", name:"Efsane Savaşçı", desc:"50 savaş kazandın",               check:p=>(p.battleWins||0)>=50 },
+  arena_acemi:{ icon:"🥉", name:"Arena Acemisi",  desc:"İlk arena maçını oynadın",        check:p=>(p.arenaGames||0)>=1 },
+  arena_usta: { icon:"🥇", name:"Arena Ustası",   desc:"50 arena maçı oynadın",           check:p=>(p.arenaGames||0)>=50 },
+  zengin:     { icon:"💰", name:"Zengin",          desc:"1000 altın biriktirdin",          check:p=>p.gold>=1000 },
+  koleksiyoner:{ icon:"👑",name:"Koleksiyoner",   desc:"3 kostüm açtın",                  check:p=>p.unlockedCostumes.length>=3 },
+  lig_gumus:  { icon:"🥈", name:"Gümüş Ligci",    desc:"Gümüş Lig'e ulaştın",            check:p=>(p.arenaScore||0)>=500 },
+  lig_altin:  { icon:"🥇", name:"Altın Ligci",    desc:"Altın Lig'e ulaştın",             check:p=>(p.arenaScore||0)>=1500 },
+  lig_efsane: { icon:"👑", name:"Efsane",          desc:"Efsane Lig'e ulaştın",           check:p=>(p.arenaScore||0)>=10000 },
+  level10:    { icon:"⚡", name:"Güçlü",           desc:"Seviye 10'a ulaştın",             check:p=>p.lvl>=10 },
+  sosyal:     { icon:"🤝", name:"Sosyal",          desc:"3 arkadaş edindin",               check:p=>(p.friends||[]).length>=3 },
+};
+
+const checkAndAwardBadges = (p:Player):Player => {
+  const current = p.badges||[];
+  const newBadges = Object.keys(BADGES).filter(id=>!current.includes(id)&&BADGES[id].check(p));
+  if(newBadges.length===0) return p;
+  return {...p, badges:[...current,...newBadges]};
+};
 const shuffle = <T,>(a:T[]) => a.slice().sort(()=>Math.random()-0.5);
 const isAdmin = (name:string) => ["ADMIN","ADMIN2","ADMIN3"].includes(name);
 
 // ─── BILEŞEN ────────────────────────────────────────────────────────────────
 export default function Game() {
-  const [screen,    setScreen]    = useState<"auth"|"menu"|"battle"|"map"|"shop"|"inv"|"arena"|"admin">("auth");
+  const [screen,    setScreen]    = useState<"auth"|"menu"|"battle"|"map"|"shop"|"inv"|"arena"|"admin"|"profile"|"social"|"classroom">("auth");
   const [platform,  setPlatform]  = useState<"mobile"|"pc"|null>(null);
   const [player,    setPlayer]    = useState<Player|null>(null);
   const [auth,      setAuth]      = useState({ user:"", pass:"", reg:false });
@@ -159,6 +188,17 @@ export default function Game() {
   const [allQuestions,   setAllQuestions]   = useState<(Q&{fbKey?:string})[]>([]);
   const [editingQ,       setEditingQ]       = useState<(Q&{fbKey?:string})|null>(null);
   const [customQs,       setCustomQs]       = useState<Q[]>([]); // artık kullanılmıyor, allQuestions var
+
+  // Profil / Sosyal / Sınıf state'leri
+  const [viewProfile,   setViewProfile]   = useState<string|null>(null); // hangi oyuncunun profili
+  const [friends,       setFriends]       = useState<{name:string;score:number;lvl:number;arenaScore:number;costume:string;online?:boolean}[]>([]);
+  const [friendReqs,    setFriendReqs]    = useState<FriendReq[]>([]);
+  const [friendInput,   setFriendInput]   = useState("");
+  const [socialTab,     setSocialTab]     = useState<"friends"|"requests"|"classroom">("friends");
+  const [classroom,     setClassroom]     = useState<ClassRoom|null>(null);
+  const [classInput,    setClassInput]    = useState("");
+  const [classNameInput,setClassNameInput]= useState("");
+  const [classMembers,  setClassMembers]  = useState<{name:string;score:number;lvl:number;arenaScore:number}[]>([]);
 
   // Arena state - temiz ve bağımsız
   const [arenaScreen,   setArenaScreen]   = useState<"menu"|"rules"|"searching"|"battle"|"ligmap">("menu");
@@ -1028,9 +1068,10 @@ export default function Game() {
                     <div style={{...S.neon("#f05"),fontSize:"18px",fontWeight:"800"}}>ADMİN PANELİ</div>
                   </div>
                 )}
-                {[{id:"map",t:"MACERA",i:"🗺️",c:"#fc0"},{id:"arena",t:"ARENA",i:"⚔️",c:"#f05"},{id:"shop",t:"MARKET",i:"🛒",c:"#0f6"},{id:"inv",t:"ÇANTA",i:"🎒",c:"#00eaff"}].map(m=>(
-                  <div key={m.id} onClick={()=>{playSound("click");if(m.id==="arena")goToArena();else setScreen(m.id as "map"|"shop"|"inv");}}
-                    style={{...S.glass,height:"190px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",cursor:"pointer",border:`1px solid ${m.c}`,background:"rgba(20,20,30,0.84)"}}>
+                {[{id:"map",t:"MACERA",i:"🗺️",c:"#fc0"},{id:"arena",t:"ARENA",i:"⚔️",c:"#f05"},{id:"shop",t:"MARKET",i:"🛒",c:"#0f6"},{id:"inv",t:"ÇANTA",i:"🎒",c:"#00eaff"},{id:"social",t:"SOSYAL",i:"🤝",c:"#b44fff"},{id:"profile",t:"PROFİL",i:"👤",c:"#00eaff"}].map(m=>(
+                  <div key={m.id} onClick={()=>{playSound("click");if(m.id==="arena")goToArena();else if(m.id==="profile"){setViewProfile(player!.name);setScreen("profile");}else setScreen(m.id as "map"|"shop"|"inv"|"social");}}
+                    style={{...S.glass,height:"190px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",cursor:"pointer",border:`1px solid ${m.c}`,background:"rgba(20,20,30,0.84)",position:"relative"}}>
+                    {m.id==="social"&&friendReqs.length>0&&<div style={{position:"absolute",top:"10px",right:"10px",background:"#f05",borderRadius:"50%",width:"22px",height:"22px",fontSize:"12px",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:"800"}}>{friendReqs.length}</div>}
                     <div style={{fontSize:"60px",marginBottom:"10px"}}>{m.i}</div>
                     <div style={{...S.neon(m.c),fontSize:"18px",fontWeight:"800"}}>{m.t}</div>
                   </div>
@@ -1883,6 +1924,226 @@ export default function Game() {
         </div>
       )}
 
+      {/* ── PROFİL EKRANI ── */}
+      {screen==="profile"&&(
+        <div style={{flex:1,overflowY:"auto",WebkitOverflowScrolling:"touch",padding:isMobile?"10px":"20px"}}>
+          <div style={{position:"sticky",top:0,zIndex:10,background:"rgba(10,10,20,0.95)",backdropFilter:"blur(8px)",padding:"10px 0",marginBottom:"12px",borderBottom:"1px solid rgba(255,255,255,0.08)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <h2 style={{...S.neon("#00eaff"),margin:0,fontSize:isMobile?"18px":"22px"}}>👤 PROFİL</h2>
+            <button style={{...S.btn,...S.btnDanger,fontSize:"12px",padding:"8px 12px"}} onClick={()=>setScreen("menu")}>← GERİ</button>
+          </div>
+          {(()=>{
+            const p = player!;
+            const lg = getLeague(p.arenaScore||0);
+            const stats = getStats(p);
+            const badgeList = p.badges||[];
+            return (
+              <div style={{maxWidth:"600px",margin:"0 auto",display:"flex",flexDirection:"column",gap:"12px"}}>
+                {/* Profil kartı */}
+                <div style={{...S.glass,padding:isMobile?"16px":"24px",textAlign:"center",border:`2px solid ${lg.color}`,background:lg.bg}}>
+                  <div style={{fontSize:isMobile?"64px":"80px",marginBottom:"8px"}}>{COSTUMES[p.currentCostume].i}</div>
+                  <div style={{fontSize:isMobile?"22px":"28px",fontWeight:"800",color:"#fff",marginBottom:"4px"}}>{p.name}</div>
+                  <div style={{color:lg.color,fontWeight:"700",fontSize:"16px",marginBottom:"8px"}}>{lg.icon} {lg.name} Ligi</div>
+                  <div style={{display:"flex",justifyContent:"center",gap:"16px",fontSize:"13px",color:"#aaa",flexWrap:"wrap"}}>
+                    <span>⚡ Seviye {p.lvl}</span>
+                    <span>⭐ {p.score} Skor</span>
+                    <span>💰 {p.gold} Altın</span>
+                  </div>
+                </div>
+                {/* İstatistikler */}
+                <div style={{...S.glass,padding:isMobile?"14px":"20px"}}>
+                  <div style={{fontWeight:"800",color:"#fc0",fontSize:isMobile?"14px":"16px",marginBottom:"12px"}}>📊 İSTATİSTİKLER</div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px"}}>
+                    {[
+                      {l:"⚔️ Savaş Galibi",v:p.battleWins||0,c:"#0f6"},
+                      {l:"💀 Savaş Yeniği",v:p.battleLoses||0,c:"#f05"},
+                      {l:"🏟️ Arena Maçı",v:p.arenaGames||0,c:"#00eaff"},
+                      {l:"🏆 Arena Puan",v:p.arenaScore||0,c:"#fc0"},
+                      {l:"⚔️ Saldırı",v:stats.atk,c:"#f05"},
+                      {l:"🛡️ Max Can",v:stats.maxHp,c:"#0f6"},
+                      {l:"🎒 Eşya",v:p.inventory.length,c:"#b44fff"},
+                      {l:"👗 Kostüm",v:p.unlockedCostumes.length,c:"#fc0"},
+                    ].map(({l,v,c})=>(
+                      <div key={l} style={{background:"rgba(255,255,255,0.04)",borderRadius:"10px",padding:"10px 12px",border:`1px solid ${c}22`}}>
+                        <div style={{color:"#aaa",fontSize:"11px",marginBottom:"4px"}}>{l}</div>
+                        <div style={{color:c,fontWeight:"800",fontSize:"18px"}}>{v}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                {/* Rozetler */}
+                <div style={{...S.glass,padding:isMobile?"14px":"20px"}}>
+                  <div style={{fontWeight:"800",color:"#fc0",fontSize:isMobile?"14px":"16px",marginBottom:"12px"}}>🏅 ROZETLER ({badgeList.length}/{Object.keys(BADGES).length})</div>
+                  <div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(3,1fr)":"repeat(4,1fr)",gap:"10px"}}>
+                    {Object.keys(BADGES).map(id=>{
+                      const b=BADGES[id];
+                      const has=badgeList.includes(id);
+                      return(
+                        <div key={id} title={b.desc} style={{padding:"10px 8px",borderRadius:"10px",textAlign:"center",background:has?"rgba(255,200,0,0.1)":"rgba(255,255,255,0.03)",border:has?"1px solid rgba(255,200,0,0.4)":"1px solid rgba(255,255,255,0.06)",opacity:has?1:0.4,transition:"all 0.2s"}}>
+                          <div style={{fontSize:"24px",filter:has?"":"grayscale(100%)"}}>{b.icon}</div>
+                          <div style={{fontSize:"10px",color:has?"#fc0":"#555",marginTop:"4px",fontWeight:"700",lineHeight:1.2}}>{b.name}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+                {/* Arkadaşa PvP meydan okuma butonu - kendi profili değilse */}
+                {viewProfile&&viewProfile!==player!.name&&(friends.some(f=>f.name===viewProfile))&&(
+                  <button style={{...S.btn,...S.btnDanger,width:"100%",padding:"14px",fontSize:"16px"}} onClick={()=>challengeFriend(viewProfile)}>
+                    ⚔️ MEYDAN OKU
+                  </button>
+                )}
+              </div>
+            );
+          })()}
+          <div style={{height:"20px"}}/>
+        </div>
+      )}
+      {/* ── SOSYAL EKRANI ── */}
+      {screen==="social"&&(
+        <div style={{flex:1,overflowY:"auto",WebkitOverflowScrolling:"touch",padding:isMobile?"10px":"20px"}}>
+          {/* Sticky başlık */}
+          <div style={{position:"sticky",top:0,zIndex:10,background:"rgba(10,10,20,0.95)",backdropFilter:"blur(8px)",paddingBottom:"10px",marginBottom:"12px",borderBottom:"1px solid rgba(255,255,255,0.08)"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"10px"}}>
+              <h2 style={{...S.neon("#b44fff"),margin:0,fontSize:isMobile?"18px":"22px"}}>🤝 SOSYAL</h2>
+              <button style={{...S.btn,...S.btnDanger,fontSize:"12px",padding:"8px 12px"}} onClick={()=>setScreen("menu")}>← GERİ</button>
+            </div>
+            <div style={{display:"flex",gap:"6px"}}>
+              {([["friends","👥 Arkadaşlar"],["requests","📬 İstekler"],["classroom","🏫 Sınıf"]] as const).map(([t,l])=>(
+                <button key={t} style={{...S.btn,flex:1,fontSize:isMobile?"11px":"12px",padding:isMobile?"8px 4px":"8px 10px",
+                  background:socialTab===t?"linear-gradient(135deg,#b44fff,#7b2fff)":"rgba(255,255,255,0.08)",position:"relative"}}
+                  onClick={()=>{ setSocialTab(t); if(t==="friends")loadFriends(); if(t==="requests")loadFriendRequests(); if(t==="classroom"&&player?.classCode)loadClassMembers(player.classCode); }}>
+                  {l}
+                  {t==="requests"&&friendReqs.length>0&&<span style={{position:"absolute",top:"-4px",right:"-4px",background:"#f05",borderRadius:"50%",width:"16px",height:"16px",fontSize:"10px",display:"flex",alignItems:"center",justifyContent:"center"}}>{friendReqs.length}</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* ARKADAŞLAR */}
+          {socialTab==="friends"&&(
+            <div>
+              <div style={{display:"flex",gap:"8px",marginBottom:"14px"}}>
+                <input style={{flex:1,padding:"10px 14px",borderRadius:"10px",border:"1px solid rgba(180,79,255,0.4)",background:"rgba(255,255,255,0.06)",color:"white",fontSize:"14px"}}
+                  placeholder="Kullanıcı adı..." value={friendInput} onChange={e=>setFriendInput(e.target.value)}
+                  onKeyDown={e=>e.key==="Enter"&&sendFriendRequest()}/>
+                <button style={{...S.btn,background:"linear-gradient(135deg,#b44fff,#7b2fff)",padding:"10px 16px"}} onClick={sendFriendRequest}>➕</button>
+              </div>
+              {friends.length===0?(
+                <div style={{textAlign:"center",padding:"40px",color:"#555"}}>
+                  <div style={{fontSize:"48px",marginBottom:"10px"}}>🤝</div>
+                  Henüz arkadaşın yok.<br/>Kullanıcı adı ile arkadaş ekle!
+                </div>
+              ):friends.map(f=>{
+                const lg=getLeague(f.arenaScore);
+                return(
+                  <div key={f.name} style={{...S.glass,padding:"12px 16px",marginBottom:"8px",display:"flex",alignItems:"center",gap:"12px",border:"1px solid rgba(180,79,255,0.2)"}}>
+                    <div style={{fontSize:"32px"}}>{COSTUMES[f.costume]?.i||"🧑"}</div>
+                    <div style={{flex:1}}>
+                      <div style={{fontWeight:"800",fontSize:"14px"}}>{f.name}</div>
+                      <div style={{fontSize:"12px",color:"#aaa"}}>{lg.icon} {lg.name} • Lv.{f.lvl} • {f.arenaScore}🏆</div>
+                    </div>
+                    <div style={{display:"flex",gap:"6px"}}>
+                      <button style={{...S.btn,padding:"6px 10px",fontSize:"11px",background:"rgba(0,114,255,0.4)"}}
+                        onClick={()=>{setViewProfile(f.name);setScreen("profile");}}>👤</button>
+                      <button style={{...S.btn,...S.btnDanger,padding:"6px 10px",fontSize:"11px"}}
+                        onClick={()=>removeFriend(f.name)}>✖</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* İSTEKLER */}
+          {socialTab==="requests"&&(
+            <div>
+              {friendReqs.length===0?(
+                <div style={{textAlign:"center",padding:"40px",color:"#555"}}>
+                  <div style={{fontSize:"48px",marginBottom:"10px"}}>📬</div>
+                  Bekleyen arkadaşlık isteği yok.
+                </div>
+              ):friendReqs.map(req=>(
+                <div key={req.from} style={{...S.glass,padding:"14px 16px",marginBottom:"8px",display:"flex",alignItems:"center",gap:"12px",border:"1px solid rgba(255,200,0,0.3)"}}>
+                  <div style={{fontSize:"28px"}}>👤</div>
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:"800"}}>{req.from}</div>
+                    <div style={{fontSize:"12px",color:"#aaa"}}>arkadaşlık isteği gönderdi</div>
+                  </div>
+                  <button style={{...S.btn,...S.btnSuccess,padding:"8px 12px",fontSize:"12px"}} onClick={()=>acceptFriendRequest(req)}>✅ Kabul</button>
+                  <button style={{...S.btn,...S.btnDanger,padding:"8px 10px",fontSize:"12px"}}
+                    onClick={async()=>{ await set(ref(db,"friendRequests/"+player!.name+"/"+req.from+"_"+player!.name),null); loadFriendRequests(); }}>✖</button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* SINIF */}
+          {socialTab==="classroom"&&(
+            <div>
+              {!player?.classCode?(
+                <div style={{display:"flex",flexDirection:"column",gap:"14px"}}>
+                  <div style={{...S.glass,padding:"18px",border:"1px solid rgba(0,198,255,0.3)"}}>
+                    <div style={{fontWeight:"800",color:"#00eaff",marginBottom:"10px",fontSize:"15px"}}>🏫 Sınıf Oluştur</div>
+                    <input style={{width:"100%",padding:"10px",marginBottom:"10px",borderRadius:"8px",border:"1px solid #444",background:"rgba(255,255,255,0.06)",color:"white",boxSizing:"border-box"}}
+                      placeholder="Sınıf adı (örn: 10-A Türk Edebiyatı)..." value={classNameInput} onChange={e=>setClassNameInput(e.target.value)}/>
+                    <button style={{...S.btn,...S.btnSuccess,width:"100%"}} onClick={createClass}>✅ SINIF OLUŞTUR</button>
+                  </div>
+                  <div style={{...S.glass,padding:"18px",border:"1px solid rgba(180,79,255,0.3)"}}>
+                    <div style={{fontWeight:"800",color:"#b44fff",marginBottom:"10px",fontSize:"15px"}}>🔑 Koda Katıl</div>
+                    <div style={{display:"flex",gap:"8px"}}>
+                      <input style={{flex:1,padding:"10px",borderRadius:"8px",border:"1px solid #444",background:"rgba(255,255,255,0.06)",color:"white",letterSpacing:"3px",fontWeight:"800",fontSize:"16px"}}
+                        placeholder="SINIF KODU..." value={classInput} onChange={e=>setClassInput(e.target.value.toUpperCase())}
+                        maxLength={6}/>
+                      <button style={{...S.btn,background:"linear-gradient(135deg,#b44fff,#7b2fff)"}} onClick={joinClass}>KATIL</button>
+                    </div>
+                  </div>
+                </div>
+              ):(
+                <div>
+                  {classroom&&(
+                    <>
+                      <div style={{...S.glass,padding:"16px",marginBottom:"12px",border:"1px solid rgba(0,198,255,0.3)",textAlign:"center"}}>
+                        <div style={{fontSize:"32px",marginBottom:"6px"}}>🏫</div>
+                        <div style={{fontWeight:"800",fontSize:"16px",color:"#00eaff"}}>{classroom.name}</div>
+                        <div style={{color:"#aaa",fontSize:"12px",marginTop:"4px"}}>Sınıf Kodu: <span style={{color:"#fc0",fontWeight:"800",letterSpacing:"2px",fontSize:"16px"}}>{classroom.code}</span></div>
+                        <div style={{color:"#555",fontSize:"11px",marginTop:"2px"}}>{classroom.members.length} üye</div>
+                      </div>
+                      <div style={{fontWeight:"800",color:"#fc0",marginBottom:"8px",fontSize:"14px"}}>🏆 Sınıf Sıralaması</div>
+                      {classMembers.map((m,i)=>{
+                        const lg=getLeague(m.arenaScore);
+                        const isMe=m.name===player!.name;
+                        return(
+                          <div key={m.name} style={{...S.glass,padding:"10px 14px",marginBottom:"6px",display:"flex",alignItems:"center",gap:"10px",
+                            background:isMe?"rgba(0,114,255,0.2)":"rgba(255,255,255,0.03)",
+                            border:isMe?"1px solid #0072ff":"1px solid rgba(255,255,255,0.06)"}}>
+                            <span style={{fontSize:"18px",minWidth:"24px",textAlign:"center"}}>{i===0?"👑":i===1?"🥈":i===2?"🥉":`${i+1}.`}</span>
+                            <div style={{flex:1}}>
+                              <div style={{fontWeight:"800",fontSize:"13px"}}>{m.name}{isMe?" (Sen)":""}</div>
+                              <div style={{fontSize:"11px",color:lg.color}}>{lg.icon} {lg.name} • Lv.{m.lvl}</div>
+                            </div>
+                            <span style={{color:"#fc0",fontWeight:"800",fontSize:"14px"}}>{m.arenaScore}🏆</span>
+                          </div>
+                        );
+                      })}
+                      <button style={{...S.btn,...S.btnDanger,width:"100%",marginTop:"16px",fontSize:"12px"}}
+                        onClick={async()=>{
+                          if(!confirm("Sınıftan ayrılmak istediğine emin misin?")) return;
+                          const newMembers=(classroom.members||[]).filter(n=>n!==player!.name);
+                          await update(ref(db,"classes/"+classroom.code),{members:newMembers});
+                          await update(ref(db,"users/"+player!.name),{classCode:""});
+                          save({...player!,classCode:""});
+                          setClassroom(null); setClassMembers([]);
+                          notify("Sınıftan ayrıldın.");
+                        }}>Sınıftan Ayrıl</button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+          <div style={{height:"20px"}}/>
+        </div>
+      )}
       {/* ── DOLAP MODAL ── */}
       {modal==="wardrobe"&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.9)",zIndex:100,display:"flex",justifyContent:"center",alignItems:"center"}}>
