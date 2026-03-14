@@ -265,10 +265,118 @@ export default function Game() {
   const save = (p:Player) => {
     p.regionProgress = p.regionProgress||{};
     REGIONS.forEach(r=>{ if(p.regionProgress[r.id]===undefined) p.regionProgress[r.id]=0; });
-    if(!isAdmin(p.name)) { try { localStorage.setItem(SAVE_KEY+p.name,JSON.stringify(p)); } catch(e){} }
-    update(ref(db,"users/"+p.name),{score:p.score,lvl:p.lvl,name:p.name,arenaScore:p.arenaScore||0,arenaGames:p.arenaGames||0}).catch(()=>{});
-    setPlayer({...p});
+    const withBadges = checkAndAwardBadges(p);
+    const newBadges = (withBadges.badges||[]).filter(b=>!(p.badges||[]).includes(b));
+    newBadges.forEach(b=>{ setTimeout(()=>notify(`🏅 Yeni Rozet: ${BADGES[b].icon} ${BADGES[b].name}!`),500); });
+    if(!isAdmin(withBadges.name)) { try { localStorage.setItem(SAVE_KEY+withBadges.name,JSON.stringify(withBadges)); } catch(e){} }
+    update(ref(db,"users/"+withBadges.name),{
+      score:withBadges.score, lvl:withBadges.lvl, name:withBadges.name,
+      arenaScore:withBadges.arenaScore||0, arenaGames:withBadges.arenaGames||0,
+      costume:withBadges.currentCostume, battleWins:withBadges.battleWins||0,
+      badges:(withBadges.badges||[]).join(","),
+      friends:(withBadges.friends||[]).join(","),
+      classCode:withBadges.classCode||""
+    }).catch(()=>{});
+    setPlayer({...withBadges});
     loadLeaderboard();
+  };
+
+  // ── ARKADAŞ SİSTEMİ ────────────────────────────────────────────────────
+  const loadFriends = async () => {
+    if(!player) return;
+    const fList = player.friends||[];
+    if(fList.length===0){ setFriends([]); return; }
+    const results = await Promise.all(fList.map(async n=>{
+      const snap = await get(ref(db,"users/"+n));
+      const d = snap.val()||{};
+      return { name:n, score:d.score||0, lvl:d.lvl||1, arenaScore:d.arenaScore||0, costume:d.costume||"default" };
+    }));
+    setFriends(results);
+  };
+
+  const loadFriendRequests = async () => {
+    if(!player) return;
+    const snap = await get(ref(db,"friendRequests/"+player.name));
+    if(!snap.exists()){ setFriendReqs([]); return; }
+    const reqs = Object.values(snap.val()) as FriendReq[];
+    setFriendReqs(reqs.filter(r=>r.status==="pending"));
+  };
+
+  const sendFriendRequest = async () => {
+    if(!player||!friendInput.trim()) return;
+    const target = friendInput.trim();
+    if(target===player.name){ notify("Kendine istek gönderemezsin!"); return; }
+    if((player.friends||[]).includes(target)){ notify("Zaten arkadaşsınız!"); return; }
+    const snap = await get(ref(db,"users/"+target));
+    if(!snap.exists()){ notify("Kullanıcı bulunamadı!"); return; }
+    const reqId = player.name+"_to_"+target;
+    await set(ref(db,"friendRequests/"+target+"/"+reqId),{ from:player.name, to:target, status:"pending", ts:Date.now() });
+    notify("✅ Arkadaşlık isteği gönderildi!");
+    setFriendInput("");
+  };
+
+  const acceptFriendRequest = async (req:FriendReq) => {
+    if(!player) return;
+    const myFriends = [...new Set([...(player.friends||[]), req.from])];
+    const theirSnap = await get(ref(db,"users/"+req.from));
+    const theirFriends = [...new Set([...((theirSnap.val()||{}).friends||[]), player.name])];
+    await update(ref(db,"users/"+player.name),{ friends:myFriends.join(",") });
+    await update(ref(db,"users/"+req.from),{ friends:theirFriends.join(",") });
+    await set(ref(db,"friendRequests/"+player.name+"/"+req.from+"_to_"+player.name),null);
+    const np = {...player, friends:myFriends};
+    save(np);
+    notify("🤝 Arkadaşlık kabul edildi!");
+    loadFriendRequests(); loadFriends();
+  };
+
+  const removeFriend = async (name:string) => {
+    if(!player) return;
+    const myFriends = (player.friends||[]).filter(f=>f!==name);
+    save({...player, friends:myFriends});
+    setTimeout(loadFriends, 300);
+    notify("Arkadaşlık kaldırıldı");
+  };
+
+  // ── SINIF SİSTEMİ ──────────────────────────────────────────────────────
+  const createClass = async () => {
+    if(!player||!classNameInput.trim()) return;
+    const code = Math.random().toString(36).substring(2,8).toUpperCase();
+    const cls:ClassRoom = { code, name:classNameInput.trim(), owner:player.name, members:[player.name], createdAt:Date.now() };
+    await set(ref(db,"classes/"+code), cls);
+    const np = {...player, classCode:code};
+    save(np);
+    setClassroom(cls); setClassNameInput("");
+    notify("✅ Sınıf oluşturuldu! Kod: "+code);
+    loadClassMembers(code);
+  };
+
+  const joinClass = async () => {
+    if(!player||!classInput.trim()) return;
+    const code = classInput.trim().toUpperCase();
+    const snap = await get(ref(db,"classes/"+code));
+    if(!snap.exists()){ notify("Sınıf bulunamadı!"); return; }
+    const cls = snap.val() as ClassRoom;
+    if(cls.members.includes(player.name)){ notify("Zaten bu sınıftasın!"); return; }
+    const newMembers = [...cls.members, player.name];
+    await update(ref(db,"classes/"+code),{ members:newMembers });
+    const np = {...player, classCode:code};
+    save(np);
+    setClassroom({...cls,members:newMembers}); setClassInput("");
+    notify("✅ Sınıfa katıldın!");
+    loadClassMembers(code);
+  };
+
+  const loadClassMembers = async (code:string) => {
+    const snap = await get(ref(db,"classes/"+code));
+    if(!snap.exists()) return;
+    const cls = snap.val() as ClassRoom;
+    setClassroom(cls);
+    const members = await Promise.all(cls.members.map(async n=>{
+      const s = await get(ref(db,"users/"+n));
+      const d = s.val()||{};
+      return { name:n, score:d.score||0, lvl:d.lvl||1, arenaScore:d.arenaScore||0 };
+    }));
+    setClassMembers(members.sort((a,b)=>b.arenaScore-a.arenaScore));
   };
   // Admin: tüm kullanıcıları yükle
   const loadAdminUsers = async () => {
