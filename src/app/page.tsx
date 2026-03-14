@@ -459,6 +459,13 @@ export default function Game() {
     } catch(e){}
   };
 
+  const sendDuelRequest = async (targetName:string) => {
+    if(!player) return;
+    const reqId = player.name+"_duel_"+targetName;
+    await set(ref(db,"duelRequests/"+targetName+"/"+reqId),{ from:player.name, to:targetName, status:"pending", ts:Date.now() });
+    notify(`⚔️ ${targetName} adlı oyuncuya duello isteği gönderildi!`);
+  };
+
   const loadDuelRequests = async () => {
     if(!player) return;
     const snap = await get(ref(db,"duelRequests/"+player.name));
