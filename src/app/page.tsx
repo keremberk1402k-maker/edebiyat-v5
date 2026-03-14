@@ -692,8 +692,8 @@ export default function Game() {
     upd["state/log"]=log;
     await update(ref(db,`matches/${matchId}`),upd);
     // Zafer kontrolü
-    const newHostHp = upd["state/hostHp"] ?? cur.state.hostHp;
-    const newGuestHp= upd["state/guestHp"] ?? cur.state.guestHp;
+    const newHostHp = Number(upd["state/hostHp"] ?? cur.state.hostHp);
+    const newGuestHp= Number(upd["state/guestHp"] ?? cur.state.guestHp);
     // Terk kontrolü - log'da terk varsa anında bitir
     const terkVar = log.includes("terk etti");
     if(terkVar) {
