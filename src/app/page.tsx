@@ -672,7 +672,7 @@ export default function Game() {
     const {matchId}=pvpRef.current;
     if(!matchId||!player) return;
     const pStats=getStats(player);
-    const upd:Record<string,unknown>={};
+    const upd:Record<string,number|boolean|string>={};
     const hc=cur.state.hostAnswerCorrect??-1;
     const gc=cur.state.guestAnswerCorrect??-1;
     const ht=cur.state.hostAnswerTime||0;
