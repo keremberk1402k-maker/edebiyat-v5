@@ -301,13 +301,41 @@ export default function Game() {
     } catch(e){}
   };
 
+  // Tam ekran + yatay yön kilidi
+  const enterFullscreen = async () => {
+    try {
+      const el = document.documentElement as any;
+      if(el.requestFullscreen) await el.requestFullscreen();
+      else if(el.webkitRequestFullscreen) await el.webkitRequestFullscreen();
+      else if(el.mozRequestFullScreen) await el.mozRequestFullScreen();
+    } catch(e){}
+  };
+  const lockLandscape = async () => {
+    try {
+      const scr = window.screen as any;
+      if(scr.orientation?.lock) await scr.orientation.lock("landscape");
+    } catch(e){}
+  };
+  const activateMobile = async () => {
+    await enterFullscreen();
+    await lockLandscape();
+  };
+
   useEffect(() => {
     setMounted(true); loadLeaderboard(); loadCustomQuestions();
+    // Platform yükle
+    const saved = localStorage.getItem("edb_platform");
+    if(saved==="mobile"||saved==="pc") setPlatform(saved as "mobile"|"pc");
     // Oyun kilidi dinle
     const lockRef = ref(db,"settings/gameLocked");
     onValue(lockRef,(snap)=>{ setGameLocked(!!snap.val()); });
     return ()=>off(lockRef);
   }, []);
+
+  // Mobil seçilince otomatik tam ekran + yatay
+  useEffect(()=>{
+    if(platform==="mobile") activateMobile();
+  },[platform]);
 
   // ── AUTH ─────────────────────────────────────────────────────────────────
   const handleAuth = () => {
@@ -844,7 +872,7 @@ export default function Game() {
       </div>
       <div style={{display:"flex",gap:"20px",flexWrap:"wrap",justifyContent:"center"}}>
         <button
-          onClick={()=>{ localStorage.setItem("edb_platform","mobile"); setPlatform("mobile"); }}
+          onClick={()=>{ localStorage.setItem("edb_platform","mobile"); setPlatform("mobile"); activateMobile(); }}
           style={{background:"linear-gradient(135deg,#f7971e,#ffd200)",border:"none",color:"#000",padding:"24px 40px",borderRadius:"20px",cursor:"pointer",fontWeight:"800",fontSize:"clamp(16px,4vw,22px)",display:"flex",flexDirection:"column",alignItems:"center",gap:"10px",boxShadow:"0 10px 30px rgba(255,200,0,0.3)",minWidth:"160px",transition:"transform 0.2s"}}
           onMouseOver={e=>(e.currentTarget.style.transform="scale(1.05)")}
           onMouseOut={e=>(e.currentTarget.style.transform="scale(1)")}>
@@ -927,6 +955,10 @@ export default function Game() {
             </div>
           </div>
           <div style={{display:"flex",gap:"6px",alignItems:"center"}}>
+            {isMobile&&(
+              <button style={{...S.btn,background:"rgba(255,255,255,0.06)",fontSize:"14px",padding:"7px 10px",minHeight:"36px"}}
+                onClick={activateMobile} title="Tam ekran">⛶</button>
+            )}
             <button style={{...S.btn,background:"rgba(255,255,255,0.08)",fontSize:"11px",padding:"7px 10px",minHeight:"36px"}}
               onClick={()=>{ localStorage.removeItem("edb_platform"); setPlatform(null); }}>
               {isMobile?"🖥️":"📱"}
