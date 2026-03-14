@@ -459,6 +459,74 @@ export default function Game() {
     } catch(e){}
   };
 
+  const createClan = async () => {
+    if(!player||!clanNameInput.trim()||!clanTagInput.trim()) return;
+    const tag = clanTagInput.trim().toUpperCase().slice(0,5);
+    const snap = await get(ref(db,"clans/"+tag));
+    if(snap.exists()){ notify("Bu etiket zaten alınmış!"); return; }
+    const newClan:Clan = { tag, name:clanNameInput.trim(), leader:player.name, createdAt:Date.now(), members:{ [player.name]:{role:"leader",joinedAt:Date.now()} } };
+    await set(ref(db,"clans/"+tag), newClan);
+    save({...player, classCode:tag});
+    setClan(newClan); setClanNameInput(""); setClanTagInput("");
+    notify("🏰 Klan oluşturuldu! Etiket: #"+tag);
+    loadClanMembers(tag);
+  };
+
+  const joinClan = async () => {
+    if(!player||!classInput.trim()) return;
+    const tag = classInput.trim().toUpperCase();
+    const snap = await get(ref(db,"clans/"+tag));
+    if(!snap.exists()){ notify("Klan bulunamadı!"); return; }
+    const c = snap.val() as Clan;
+    if(c.members[player.name]){ notify("Zaten bu klansın!"); return; }
+    const newMembers = {...c.members, [player.name]:{role:"member" as const,joinedAt:Date.now()}};
+    await update(ref(db,"clans/"+tag),{ members:newMembers });
+    save({...player, classCode:tag});
+    setClan({...c,members:newMembers}); setClassInput("");
+    notify("✅ Klana katıldın! #"+tag);
+    loadClanMembers(tag);
+  };
+
+  const loadClanMembers = async (tag:string) => {
+    const snap = await get(ref(db,"clans/"+tag));
+    if(!snap.exists()) return;
+    const c = snap.val() as Clan;
+    setClan(c);
+    const members = await Promise.all(Object.keys(c.members).map(async n=>{
+      const s = await get(ref(db,"users/"+n));
+      const d = s.val()||{};
+      return { name:n, score:d.score||0, lvl:d.lvl||1, arenaScore:d.arenaScore||0, role:c.members[n].role };
+    }));
+    setClanMembers(members.sort((a,b)=>b.arenaScore-a.arenaScore));
+  };
+
+  const updateMemberRole = async (targetName:string, newRole:"officer"|"member") => {
+    if(!clan||!player) return;
+    await update(ref(db,"clans/"+clan.tag+"/members/"+targetName),{ role:newRole });
+    notify(`✅ ${targetName} artık ${newRole==="officer"?"Subay":"Üye"}`);
+    loadClanMembers(clan.tag);
+  };
+
+  const kickFromClan = async (targetName:string) => {
+    if(!clan||!player||!confirm(`${targetName} klandan çıkarılsın mı?`)) return;
+    const newMembers = {...clan.members};
+    delete newMembers[targetName];
+    await update(ref(db,"clans/"+clan.tag),{ members:newMembers });
+    await update(ref(db,"users/"+targetName),{ clanTag:"" });
+    notify(`${targetName} klandan çıkarıldı`);
+    loadClanMembers(clan.tag);
+  };
+
+  const leaveClan = async () => {
+    if(!clan||!player||!confirm("Klandan ayrılmak istediğine emin misin?")) return;
+    const newMembers = {...clan.members};
+    delete newMembers[player.name];
+    await update(ref(db,"clans/"+clan.tag),{ members:newMembers });
+    save({...player, classCode:""});
+    setClan(null); setClanMembers([]);
+    notify("Klandan ayrıldın.");
+  };
+
   const sendDuelRequest = async (targetName:string) => {
     if(!player) return;
     const reqId = player.name+"_duel_"+targetName;
