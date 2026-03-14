@@ -464,8 +464,9 @@ export default function Game() {
     const tag = clanTagInput.trim().toUpperCase().slice(0,5);
     const snap = await get(ref(db,"clans/"+tag));
     if(snap.exists()){ notify("Bu etiket zaten alınmış!"); return; }
-    const newClan:Clan = { tag, name:clanNameInput.trim(), leader:player.name, createdAt:Date.now(), members:{ [player.name]:{role:"leader",joinedAt:Date.now()} } };
+    const newClan:Clan = { tag, name:clanNameInput.trim(), leader:player.name, createdAt:Date.now(), members:{ [player.name]:{role:"leader" as const,joinedAt:Date.now()} } };
     await set(ref(db,"clans/"+tag), newClan);
+    await update(ref(db,"users/"+player.name),{clanTag:tag,classCode:tag});
     save({...player, classCode:tag});
     setClan(newClan); setClanNameInput(""); setClanTagInput("");
     notify("🏰 Klan oluşturuldu! Etiket: #"+tag);
@@ -481,6 +482,7 @@ export default function Game() {
     if(c.members[player.name]){ notify("Zaten bu klansın!"); return; }
     const newMembers = {...c.members, [player.name]:{role:"member" as const,joinedAt:Date.now()}};
     await update(ref(db,"clans/"+tag),{ members:newMembers });
+    await update(ref(db,"users/"+player.name),{clanTag:tag,classCode:tag});
     save({...player, classCode:tag});
     setClan({...c,members:newMembers}); setClassInput("");
     notify("✅ Klana katıldın! #"+tag);
@@ -490,12 +492,20 @@ export default function Game() {
   const loadClanMembers = async (tag:string) => {
     const snap = await get(ref(db,"clans/"+tag));
     if(!snap.exists()) return;
-    const c = snap.val() as Clan;
+    const raw = snap.val();
+    // members bazen array, bazen object olabilir - normalize et
+    if(raw.members && Array.isArray(raw.members)) {
+      const obj:{[k:string]:{role:string;joinedAt:number}} = {};
+      raw.members.forEach((n:string)=>{ obj[n]={role:"member",joinedAt:0}; });
+      raw.members = obj;
+    }
+    const c = raw as Clan;
     setClan(c);
-    const members = await Promise.all(Object.keys(c.members).map(async n=>{
+    const memberKeys = c.members ? Object.keys(c.members) : [];
+    const members = await Promise.all(memberKeys.map(async n=>{
       const s = await get(ref(db,"users/"+n));
       const d = s.val()||{};
-      return { name:n, score:d.score||0, lvl:d.lvl||1, arenaScore:d.arenaScore||0, role:c.members[n].role };
+      return { name:n, score:d.score||0, lvl:d.lvl||1, arenaScore:d.arenaScore||0, role:c.members[n]?.role||"member" };
     }));
     setClanMembers(members.sort((a,b)=>b.arenaScore-a.arenaScore));
   };
@@ -675,17 +685,24 @@ export default function Game() {
           if(nb.level?.isBoss&&nb.region){const rg=nb.region;np.unlockedRegions=np.unlockedRegions||["tut"];np.unlockedCostumes=np.unlockedCostumes||["default"];if(rg.unlockC&&!np.unlockedCostumes.includes(rg.unlockC))np.unlockedCostumes.push(rg.unlockC);if(rg.levels.length>0)np.regionProgress[rg.id]=rg.levels.length;const ri=REGIONS.findIndex(r=>r.id===rg.id);if(ri!==-1&&ri<REGIONS.length-1){const nr=REGIONS[ri+1].id;if(nr==="r3"){if(np.regionProgress["r2"]>=REGIONS.find(r=>r.id==="r2")!.levels.length&&!np.unlockedRegions.includes(nr))np.unlockedRegions.push(nr);}else if(!np.unlockedRegions.includes(nr))np.unlockedRegions.push(nr);}}
           save(np); setScreen("menu"); return;
         }
-        // Bot sırası - bot cevaplar (doğru sonra bot)
+        // Bot sırası - PvP kurallarıyla bot cevaplar
         if(botMatch) {
-          const botCorrect=Math.random()>0.4;
-          if(botCorrect){
+          const botCorrect = Math.random() > 0.35; // %65 doğruluk
+          const botTime = Math.random() * 17 + 1;   // 1-18 sn arası rastgele süre
+          const playerTime = 20 - (nb.timer||0);     // oyuncunun cevap süresi
+          const botFaster = botTime < playerTime;     // bot daha hızlı mı?
+          const isBotArena = nb.level?.id==="pvp-bot";
+          if(botCorrect && botFaster) {
+            // Bot hem doğru hem hızlı → bot da hasar verir
             const np={...player!}; np.hp=Math.max(0,np.hp-botDmg); setPlayer(np);
-            nb.log=`✅ DOĞRU! ${dmg} Hasar! | 🤖 BOT DA DOĞRU: -${botDmg} Can`;
+            nb.log=`✅ DOĞRU! ${dmg} Hasar! | 🤖 Bot da Doğru (${botTime.toFixed(1)}s): -${botDmg} Can`;
             if(np.hp<=0){np.hp=pStats.maxHp;
-          const isBotArena2=nb.level?.id==="pvp-bot";
-          if(isBotArena2){np.arenaScore=Math.max(0,(np.arenaScore||0)-30);np.arenaGames=(np.arenaGames||0)+1;notify("😔 Bota yenildin... -30 Arena Puan");}
-          else notify("YENİLDİN...");
-          save(np);setBattle({active:false,enemyHp:0,maxEnemyHp:0,qs:[],qIdx:0,timer:20,combo:0,log:null,wait:false,dmgText:null,shaking:false});setScreen("menu");return;}
+              if(isBotArena){np.arenaScore=Math.max(0,(np.arenaScore||0)-50);np.arenaGames=(np.arenaGames||0)+1;notify("😔 Bota yenildin... -50 Arena Puan");}
+              else notify("YENİLDİN...");
+              save(np);setBattle({active:false,enemyHp:0,maxEnemyHp:0,qs:[],qIdx:0,timer:20,combo:0,log:null,wait:false,dmgText:null,shaking:false});setScreen("menu");return;}
+          } else if(botCorrect && !botFaster) {
+            // Bot doğru ama yavaş → sadece oyuncu hasar verir, bot yavaş kaldı
+            nb.log=`✅ DOĞRU! ${dmg} Hasar! | 🤖 Bot Yavaş Kaldı (${botTime.toFixed(1)}s)`;
           } else {
             nb.log=`✅ DOĞRU! ${dmg} Hasar! | 🤖 Bot Iskaladı`;
           }
@@ -699,21 +716,24 @@ export default function Game() {
           if(isBotArena2){np.arenaScore=Math.max(0,(np.arenaScore||0)-30);np.arenaGames=(np.arenaGames||0)+1;notify("😔 Bota yenildin... -30 Arena Puan");}
           else notify("YENİLDİN...");
           save(np);setBattle({active:false,enemyHp:0,maxEnemyHp:0,qs:[],qIdx:0,timer:20,combo:0,log:null,wait:false,dmgText:null,shaking:false});setScreen("menu");return;}
-        // Bot sırası - yanlış yapınca da bot cevaplar
+        // Bot sırası - oyuncu yanlış yaptı, bot cevap verir
         if(botMatch) {
-          const botCorrect=Math.random()>0.4;
+          const botCorrect = Math.random() > 0.35;
+          const isBotArena = nb.level?.id==="pvp-bot";
           if(botCorrect){
             nb.enemyHp=Math.max(0,nb.enemyHp-botDmg);
-            nb.log=`❌ YANLIŞ! -20 Can | 🤖 Bot Doğru: -${botDmg} Düşman Can`;
+            nb.log=`❌ YANLIŞ! -20 Can | 🤖 Bot Doğru: -${botDmg} Bot Can`;
             if(nb.enemyHp<=0){
               playSound("win");launchConfetti();
-              const np2={...player!};np2.gold+=100;np2.xp+=30;np2.score+=50;np2.hp=pStats.maxHp;
-              const oldAS=np2.arenaScore||0; const newAS=oldAS+100;
+              const np2={...player!};np2.gold+=150;np2.xp+=40;np2.score+=80;np2.hp=pStats.maxHp;
+              const oldAS=np2.arenaScore||0; const newAS=oldAS+(isBotArena?100:0);
               const ol=getLeague(oldAS); const nl=getLeague(newAS);
-              if(nl.name!==ol.name) notify(`🎉 TERFİ! ${nl.icon} ${nl.name} Ligine çıktın!`);
-              else notify("🏆 BOT YENİLDİ! +100 Arena Puan");
-              np2.arenaScore=newAS; np2.arenaGames=(np2.arenaGames||0)+1;
-              save(np2);setScreen("menu");return;
+              if(isBotArena){
+                if(nl.name!==ol.name) notify(`🎉 TERFİ! ${nl.icon} ${nl.name} Ligine çıktın!`);
+                else notify("🏆 BOT YENİLDİ! +100 Arena Puan");
+                np2.arenaScore=newAS; np2.arenaGames=(np2.arenaGames||0)+1;
+              } else notify("🏆 ZAFER! +150 Altın");
+              save(np2);setBattle({active:false,enemyHp:0,maxEnemyHp:0,qs:[],qIdx:0,timer:20,combo:0,log:null,wait:false,dmgText:null,shaking:false});setScreen("menu");return;
             }
           } else {
             nb.log=`❌ YANLIŞ! -20 Can | 🤖 Bot da Iskaladı`;
@@ -796,12 +816,20 @@ export default function Game() {
   // ── Eşleştirme bul ──────────────────────────────────────────────────────
   const startBotMatch = () => {
     if(!player) return;
+    const stats = getStats(player);
+    const botAtk = Math.floor(stats.atk * 0.85);
     const qs = shuffle(allQuestions.length>0?allQuestions:DEFAULT_QUESTIONS).slice(0,25);
     setBotMatch(true); setTurn("p1");
-    setPvp({ matchId:null, matchData:null, side:"host" });
-    setArenaScreen("battle");
-    // Arena battle state'ini sıfırla - useEffect halleder
-    notify("🤖 Bot ile eşleşildi!");
+    // Bot arena battle state'ini başlat
+    setBattle({
+      active:true,
+      region:undefined,
+      level:{id:"pvp-bot",t:"Bot Arena Maçı",hp:stats.maxHp,en:"🤖 Bot Rakip",ico:"🤖",diff:"Arena"},
+      enemyHp:stats.maxHp, maxEnemyHp:stats.maxHp,
+      qs, qIdx:0, timer:20, combo:0, log:null, wait:false, dmgText:null, shaking:false
+    });
+    setScreen("battle");
+    notify("🤖 Bot ile eşleşildi! İyi şanslar!");
   };
 
   const findMatch = async () => {
@@ -1290,13 +1318,21 @@ export default function Game() {
                   <span style={{...S.neon("#f05"),fontSize:"13px",fontWeight:"800"}}>ADMİN PANELİ</span>
                 </div>
               )}
-              {/* Grid butonlar */}
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px"}}>
-                {[{id:"map",t:"MACERA",i:"🗺️",c:"#fc0"},{id:"arena",t:"ARENA",i:"⚔️",c:"#f05"},{id:"shop",t:"MARKET",i:"🛒",c:"#0f6"},{id:"inv",t:"ÇANTA",i:"🎒",c:"#00eaff"}].map(m=>(
-                  <div key={m.id} onClick={()=>{playSound("click");if(m.id==="arena")goToArena();else setScreen(m.id as "map"|"shop"|"inv");}}
-                    style={{...S.glass,height:"110px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",cursor:"pointer",border:`1px solid ${m.c}`,background:"rgba(20,20,30,0.9)",gap:"6px"}}>
-                    <div style={{fontSize:"36px"}}>{m.i}</div>
-                    <div style={{...S.neon(m.c),fontSize:"13px",fontWeight:"800"}}>{m.t}</div>
+              {/* Grid butonlar - 3 sütun */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"8px"}}>
+                {[
+                  {id:"map",t:"MACERA",i:"🗺️",c:"#fc0"},
+                  {id:"arena",t:"ARENA",i:"⚔️",c:"#f05"},
+                  {id:"shop",t:"MARKET",i:"🛒",c:"#0f6"},
+                  {id:"inv",t:"ÇANTA",i:"🎒",c:"#00eaff"},
+                  {id:"social",t:"SOSYAL",i:"🤝",c:"#b44fff"},
+                  {id:"profile",t:"PROFİL",i:"👤",c:"#aef"},
+                ].map(m=>(
+                  <div key={m.id} onClick={()=>{playSound("click");if(m.id==="arena")goToArena();else if(m.id==="profile"){setViewProfile(player!.name);setScreen("profile");}else setScreen(m.id as "map"|"shop"|"inv"|"social");}}
+                    style={{...S.glass,height:"90px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",cursor:"pointer",border:`1px solid ${m.c}`,background:"rgba(20,20,30,0.9)",gap:"4px",position:"relative"}}>
+                    {m.id==="social"&&(friendReqs.length+duelReqs.length)>0&&<div style={{position:"absolute",top:"6px",right:"6px",background:"#f05",borderRadius:"50%",width:"16px",height:"16px",fontSize:"9px",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:"800"}}>{friendReqs.length+duelReqs.length}</div>}
+                    <div style={{fontSize:"28px"}}>{m.i}</div>
+                    <div style={{...S.neon(m.c),fontSize:"10px",fontWeight:"800"}}>{m.t}</div>
                   </div>
                 ))}
               </div>
@@ -1313,7 +1349,7 @@ export default function Game() {
                   <div style={{display:"flex",justifyContent:"space-between"}}><span>🛡️ Can</span><span style={{color:"#0f6",fontWeight:"700"}}>{getStats(player!).maxHp}</span></div>
                 </div>
               </div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"20px",width:"580px"}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"16px",width:"620px"}}>
                 {isAdmin(player!.name)&&(
                   <div onClick={()=>{loadAdminUsers();setScreen("admin");}}
                     style={{...S.glass,padding:"12px 20px",display:"flex",alignItems:"center",gap:"10px",cursor:"pointer",border:"1px solid #f05",background:"rgba(30,0,0,0.84)",gridColumn:"1/-1",justifyContent:"center"}}>
@@ -1323,10 +1359,10 @@ export default function Game() {
                 )}
                 {[{id:"map",t:"MACERA",i:"🗺️",c:"#fc0"},{id:"arena",t:"ARENA",i:"⚔️",c:"#f05"},{id:"shop",t:"MARKET",i:"🛒",c:"#0f6"},{id:"inv",t:"ÇANTA",i:"🎒",c:"#00eaff"},{id:"social",t:"SOSYAL",i:"🤝",c:"#b44fff"},{id:"profile",t:"PROFİL",i:"👤",c:"#00eaff"}].map(m=>(
                   <div key={m.id} onClick={()=>{playSound("click");if(m.id==="arena")goToArena();else if(m.id==="profile"){setViewProfile(player!.name);setScreen("profile");}else setScreen(m.id as "map"|"shop"|"inv"|"social");}}
-                    style={{...S.glass,height:"190px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",cursor:"pointer",border:`1px solid ${m.c}`,background:"rgba(20,20,30,0.84)",position:"relative"}}>
+                    style={{...S.glass,height:"150px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",cursor:"pointer",border:`1px solid ${m.c}`,background:"rgba(20,20,30,0.84)",position:"relative"}}>
                     {m.id==="social"&&friendReqs.length>0&&<div style={{position:"absolute",top:"10px",right:"10px",background:"#f05",borderRadius:"50%",width:"22px",height:"22px",fontSize:"12px",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:"800"}}>{friendReqs.length}</div>}
-                    <div style={{fontSize:"60px",marginBottom:"10px"}}>{m.i}</div>
-                    <div style={{...S.neon(m.c),fontSize:"18px",fontWeight:"800"}}>{m.t}</div>
+                    <div style={{fontSize:"40px",marginBottom:"6px"}}>{m.i}</div>
+                    <div style={{...S.neon(m.c),fontSize:"14px",fontWeight:"800"}}>{m.t}</div>
                   </div>
                 ))}
               </div>
@@ -2035,7 +2071,7 @@ export default function Game() {
                       <div style={{fontSize:"12px",color:"#aaa",marginTop:"4px"}}>Lider: {c.leader} • {Object.keys(c.members||{}).length} üye</div>
                     </div>
                     <button style={{...S.btn,...S.btnDanger,padding:"5px 10px",fontSize:"11px"}}
-                      onClick={async()=>{ if(!confirm("Klan silinsin mi?")) return; await set(ref(db,"clans/"+c.tag),null); notify("Klan silindi!"); }}>Sil</button>
+                      onClick={async()=>{ if(!confirm("Klan silinsin mi?")) return; await set(ref(db,"clans/"+c.tag),null); setAdminUsers(prev=>{const n={...prev};delete (n as any).__clans__; return n;}); notify("Klan silindi!"); loadAdminUsers(); }}>Sil</button>
                   </div>
                   <div style={{marginTop:"8px",display:"flex",gap:"6px",flexWrap:"wrap"}}>
                     {Object.entries(c.members||{}).map(([name,data]:any)=>(
