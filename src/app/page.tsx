@@ -1710,7 +1710,7 @@ export default function Game() {
                     if(myAns!==-1 && isCorrectBtn){ bg="linear-gradient(135deg,#11998e,#38ef7d)"; brd="2px solid #0f6"; sc="scale(1.04)"; }
                     return(
                       <button key={i}
-                        style={{...S.btn,padding:isMobile?"10px":"14px",fontSize:isMobile?13:15,width:"100%",textTransform:"none",outline:isAdmin(player!.name)&&pvpQ&&j===pvpQ.a?"3px solid #0f6":"none",
+                        style={{...S.btn,padding:isMobile?"10px":"14px",fontSize:isMobile?13:15,width:"100%",textTransform:"none",outline:isAdmin(player!.name)&&pvp.matchData?.state&&j===pvp.matchData.state.qs[pvp.matchData.state.qIdx]?.a?"3px solid #0f6":"none",
                           background:bg, border:brd, transform:sc,
                           transition:"all 0.25s ease",
                           opacity:disabled&&!isCorrectBtn?0.45:1,
@@ -1754,7 +1754,7 @@ export default function Game() {
                     const disabled = !!showAnswer;
                     return(
                       <button key={i}
-                        style={{...S.btn,padding:isMobile?"10px":"14px",fontSize:isMobile?13:15,width:"100%",textTransform:"none",outline:isAdmin(player!.name)&&pvpQ&&j===pvpQ.a?"3px solid #0f6":"none",
+                        style={{...S.btn,padding:isMobile?"10px":"14px",fontSize:isMobile?13:15,width:"100%",textTransform:"none",outline:isAdmin(player!.name)&&pvp.matchData?.state&&j===pvp.matchData.state.qs[pvp.matchData.state.qIdx]?.a?"3px solid #0f6":"none",
                           background:bg, border, transform:scale,
                           transition:"all 0.25s ease",
                           opacity:disabled&&!isCorrect&&!isChosen?0.5:1,
