@@ -535,6 +535,10 @@ export default function Game() {
   // ═══════════════════════════════════════════════════════════════════════
 
   // Arena'ya giriş
+  const challengeFriend = (name:string) => {
+    notify(`⚔️ ${name} meydan okuma özelliği yakında!`);
+  };
+
   const goToArena = () => {
     if(!player) return;
     const r2Progress = player.regionProgress["r2"]??0;
