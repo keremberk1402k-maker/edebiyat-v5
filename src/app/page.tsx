@@ -153,7 +153,7 @@ export default function Game() {
 
   const [gameLocked,    setGameLocked]    = useState(false);
   // Admin panel states
-  const [adminUsers,    setAdminUsers]    = useState<{[k:string]:any}>({});
+  const [adminUsers,    setAdminUsers]    = useState<{[k:string]:{ score:number; lvl:number; name?:string; arenaScore?:number; arenaGames?:number }}>({});
   const [adminQuestion, setAdminQuestion] = useState({ q:"", o:["","","",""], a:0, topic:"genel" });
   const [adminTab,      setAdminTab]      = useState<"users"|"questions"|"system">("users");
   const [allQuestions,   setAllQuestions]   = useState<(Q&{fbKey?:string})[]>([]);
@@ -162,7 +162,7 @@ export default function Game() {
 
   // Arena state - temiz ve bağımsız
   const [arenaScreen,   setArenaScreen]   = useState<"menu"|"rules"|"searching"|"battle"|"ligmap">("menu");
-  const [arenaLeftTab,  setArenaLeftTab]  = useState<"siralama"|"liglar">("siralama");
+  const [arenaLeftTab,  setArenaLeftTab]  = useState<'siralama'|'liglar'>('siralama');
   const [searchTime,  setSearchTime]  = useState(50);
   const [pvp,         setPvp]         = useState<PvPState>({ matchId:null, matchData:null, side:null });
 
@@ -244,7 +244,7 @@ export default function Game() {
     try {
       const newQ = { ...adminQuestion, id: Date.now().toString() };
       await push(ref(db,"customQuestions"), newQ);
-      setCustomQs(prev=>[...prev, newQ as any]);
+      setCustomQs(prev=>[...prev, newQ as Q]);
       setAdminQuestion({ q:"", o:["","","",""], a:0, topic:"genel" });
       notify("✅ Soru eklendi!");
     } catch(e){ notify("Hata: "+String(e)); }
@@ -256,7 +256,8 @@ export default function Game() {
       const snap = await get(ref(db,"questions"));
       if(snap.exists()) {
         const obj = snap.val();
-        const qs = Object.entries(obj).map(([k,v]:any)=>({...v,fbKey:k}));
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const qs = Object.entries(obj).map(([k,v]:any)=>({...(v as Q),fbKey:k})) as (Q&{fbKey:string})[];
         setAllQuestions(qs);
         setCustomQs(qs); // eski uyumluluk
       } else {
@@ -671,7 +672,7 @@ export default function Game() {
     const {matchId}=pvpRef.current;
     if(!matchId||!player) return;
     const pStats=getStats(player);
-    const upd:any={};
+    const upd:Record<string,unknown>={};
     const hc=cur.state.hostAnswerCorrect??-1;
     const gc=cur.state.guestAnswerCorrect??-1;
     const ht=cur.state.hostAnswerTime||0;
@@ -804,8 +805,15 @@ export default function Game() {
   // ═══════════════════════════════════════════════════════════════════════
   const isMobile = platform === "mobile";
   const globalStyles=`
-    * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
-    input, button, select { font-family: inherit; }
+    *, *::before, *::after { -webkit-tap-highlight-color: transparent; box-sizing: border-box; -webkit-text-size-adjust: 100%; }
+    html { height: 100%; overscroll-behavior: none; }
+    body { height: 100%; margin: 0; overscroll-behavior: none; -webkit-overflow-scrolling: touch; }
+    input, button, select, textarea { font-family: inherit; font-size: inherit; }
+    button { touch-action: manipulation; cursor: pointer; }
+    input { -webkit-appearance: none; appearance: none; border-radius: 0; }
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: rgba(255,255,255,0.04); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.18); border-radius: 4px; }
     @keyframes pulse{0%{transform:scale(1)}50%{transform:scale(1.04)}100%{transform:scale(1)}}
     @keyframes float{0%{transform:translateX(-50%) translateY(0);opacity:1}100%{transform:translateX(-50%) translateY(-60px);opacity:0}}
     @keyframes spin{to{transform:rotate(360deg)}}
@@ -813,9 +821,14 @@ export default function Game() {
     @keyframes shakeX{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}
     @keyframes glowGreen{0%,100%{box-shadow:0 0 10px #0f6}50%{box-shadow:0 0 30px #0f6,0 0 60px #0f6}}
     @keyframes glowRed{0%,100%{box-shadow:0 0 10px #f05}50%{box-shadow:0 0 30px #f05,0 0 60px #f05}}
-    .floating-dmg{position:absolute;left:50%;font-size:72px;font-weight:800;text-shadow:0 0 30px black;animation:float 1.2s forwards;pointer-events:none}
+    @keyframes slideUp{from{transform:translateY(40px);opacity:0}to{transform:translateY(0);opacity:1}}
+    @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+    .floating-dmg{position:absolute;left:50%;font-size:${isMobile?"44px":"72px"};font-weight:800;text-shadow:0 0 30px black;animation:float 1.2s forwards;pointer-events:none}
     .ans-reveal-correct{animation:glowGreen 0.6s ease infinite,popIn 0.3s ease!important}
     .ans-reveal-wrong{animation:glowRed 0.4s ease,shakeX 0.4s ease!important}
+    .screen-enter{animation:slideUp 0.25s ease,fadeIn 0.25s ease}
+    /* Mobil buton dokunma alanı büyütme */
+    ${isMobile ? "button{min-height:44px;}" : ""}
   `;
 
   if(!mounted) return <div style={{height:"100vh",background:"#000"}}/>;
@@ -894,53 +907,105 @@ export default function Game() {
   );
 
   return (
-    <div style={{height:"100vh",background:"radial-gradient(circle at center,#1a1a2e,#000)",color:"white",fontFamily:"Segoe UI,sans-serif",overflow:"hidden",display:"flex",flexDirection:"column",fontSize:isMobile?"15px":"14px"}}>
+    <div style={{height:"100vh",background:"radial-gradient(circle at center,#1a1a2e,#000)",color:"white",fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",overflow:"hidden",display:"flex",flexDirection:"column",fontSize:isMobile?"15px":"14px"}}>
       <style>{globalStyles}</style>
       <canvas ref={confettiRef} style={{position:"fixed",inset:0,pointerEvents:"none",zIndex:9999}}/>
 
       {/* ── HEADER ── */}
       {screen!=="battle"&&screen!=="arena"&&(
-        <div style={{...S.glass,margin:"15px",padding:"15px 25px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <div style={{display:"flex",gap:"18px",fontSize:"18px",fontWeight:"700",alignItems:"center"}}>
-            <span style={{fontSize:"24px"}}>{COSTUMES[player!.currentCostume].i}</span>
-            <span style={S.neon("#fc0")}>⚡ {player?.lvl}</span>
-            <span style={S.neon("#0f6")}>❤️ {player?.hp}</span>
-            <span style={S.neon("#00eaff")}>💰 {player?.gold}</span>
+        <div style={{background:"rgba(0,0,0,0.75)",backdropFilter:"blur(12px)",borderBottom:"1px solid rgba(255,255,255,0.07)",padding:isMobile?"10px 14px":"12px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0,zIndex:100}}>
+          <div style={{display:"flex",gap:isMobile?"10px":"16px",alignItems:"center"}}>
+            <span style={{fontSize:isMobile?"22px":"26px",lineHeight:1}}>{COSTUMES[player!.currentCostume].i}</span>
+            <div>
+              <div style={{fontWeight:"800",fontSize:isMobile?"13px":"15px",color:"#fff",lineHeight:1.2}}>{player?.name}</div>
+              <div style={{display:"flex",gap:"8px",fontSize:isMobile?"11px":"12px",marginTop:"2px"}}>
+                <span style={S.neon("#fc0")}>⚡{player?.lvl}</span>
+                <span style={S.neon("#0f6")}>❤️{player?.hp}</span>
+                <span style={S.neon("#00eaff")}>💰{player?.gold}</span>
+                {(()=>{const lg=getLeague(player?.arenaScore||0);return <span style={{color:lg.color}}>{lg.icon}{player?.arenaScore||0}</span>;})()}
+              </div>
+            </div>
           </div>
-          <button style={{...S.btn,...S.btnDanger,padding:"10px 18px",fontSize:14}} onClick={()=>setScreen("auth")}>ÇIKIŞ</button>
+          <div style={{display:"flex",gap:"6px",alignItems:"center"}}>
+            <button style={{...S.btn,background:"rgba(255,255,255,0.08)",fontSize:"11px",padding:"7px 10px",minHeight:"36px"}}
+              onClick={()=>{ localStorage.removeItem("edb_platform"); setPlatform(null); }}>
+              {isMobile?"🖥️":"📱"}
+            </button>
+            <button style={{...S.btn,...S.btnDanger,fontSize:"11px",padding:"7px 12px",minHeight:"36px"}} onClick={()=>{setPlayer(null);setScreen("auth");}}>ÇIKIŞ</button>
+          </div>
         </div>
       )}
 
-      {notif&&<div style={{position:"fixed",top:80,left:"50%",transform:"translateX(-50%)",background:"#0f6",padding:"12px 22px",borderRadius:"12px",color:"#000",zIndex:999,fontWeight:"700",boxShadow:"0 0 20px #0f6"}}>{notif}</div>}
+      {notif&&<div style={{position:"fixed",top:isMobile?"60px":"80px",left:"50%",transform:"translateX(-50%)",background:"#0f6",padding:isMobile?"10px 18px":"12px 22px",borderRadius:"12px",color:"#000",zIndex:9999,fontWeight:"700",boxShadow:"0 0 20px #0f6",whiteSpace:"nowrap",fontSize:isMobile?"13px":"14px"}}>{notif}</div>}
 
       {/* ── MENU ── */}
       {screen==="menu"&&(
-        <div style={{flex:1,display:"flex",flexDirection:"row",alignItems:"center",justifyContent:"center",gap:"28px",padding:"20px"}}>
-          <div style={{...S.glass,padding:"36px",textAlign:"center",width:"380px",height:"500px",display:"flex",flexDirection:"column",justifyContent:"center"}}>
-            <div style={{fontSize:"96px",cursor:"pointer",animation:"pulse 2s infinite"}} onClick={()=>setModal("wardrobe")}>{COSTUMES[player!.currentCostume].i}</div>
-            <h2 style={{...S.neon("#fff"),fontSize:"30px",margin:"8px 0"}}>{player?.name}</h2>
-            <div style={{color:"#aaa",marginBottom:"18px"}}>{COSTUMES[player!.currentCostume].n}</div>
-            <div style={{background:"rgba(255,255,255,0.03)",padding:"12px",borderRadius:"12px",textAlign:"left"}}>
-              <div style={{display:"flex",justifyContent:"space-between",marginBottom:"8px"}}><span>⚔️ Saldırı</span><span style={{color:"#f05",fontWeight:"700"}}>{getStats(player!).atk}</span></div>
-              <div style={{display:"flex",justifyContent:"space-between"}}><span>🛡️ Can</span><span style={{color:"#0f6",fontWeight:"700"}}>{getStats(player!).maxHp}</span></div>
+        <div style={{flex:1,overflowY:"auto",padding:isMobile?"12px":"20px"}}>
+          {isMobile ? (
+            /* MOBİL: dikey layout */
+            <div style={{display:"flex",flexDirection:"column",gap:"12px",maxWidth:"480px",margin:"0 auto"}}>
+              {/* Karakter kartı - yatay, kompakt */}
+              <div style={{...S.glass,padding:"14px 18px",display:"flex",alignItems:"center",gap:"14px"}}>
+                <div style={{fontSize:"52px",cursor:"pointer",animation:"pulse 2s infinite",flexShrink:0}} onClick={()=>setModal("wardrobe")}>{COSTUMES[player!.currentCostume].i}</div>
+                <div style={{flex:1}}>
+                  <div style={{...S.neon("#fff"),fontSize:"18px",fontWeight:"800",marginBottom:"2px"}}>{player?.name}</div>
+                  <div style={{color:"#aaa",fontSize:"12px",marginBottom:"6px"}}>{COSTUMES[player!.currentCostume].n}</div>
+                  <div style={{display:"flex",gap:"12px",fontSize:"13px"}}>
+                    <span>⚔️ <span style={{color:"#f05",fontWeight:"700"}}>{getStats(player!).atk}</span></span>
+                    <span>🛡️ <span style={{color:"#0f6",fontWeight:"700"}}>{getStats(player!).maxHp}</span></span>
+                    <span>⭐ <span style={{color:"#fc0",fontWeight:"700"}}>{player?.xp}/{player?.maxXp}</span></span>
+                  </div>
+                </div>
+              </div>
+              {/* Admin */}
+              {isAdmin(player!.name)&&(
+                <div onClick={()=>{loadAdminUsers();setScreen("admin");}}
+                  style={{...S.glass,padding:"14px",display:"flex",alignItems:"center",gap:"12px",cursor:"pointer",border:"1px solid #f05",background:"rgba(30,0,0,0.84)"}}>
+                  <span style={{fontSize:"32px"}}>🔧</span>
+                  <span style={{...S.neon("#f05"),fontSize:"16px",fontWeight:"800"}}>ADMİN PANELİ</span>
+                </div>
+              )}
+              {/* Grid butonlar */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px"}}>
+                {[{id:"map",t:"MACERA",i:"🗺️",c:"#fc0"},{id:"arena",t:"ARENA",i:"⚔️",c:"#f05"},{id:"shop",t:"MARKET",i:"🛒",c:"#0f6"},{id:"inv",t:"ÇANTA",i:"🎒",c:"#00eaff"}].map(m=>(
+                  <div key={m.id} onClick={()=>{playSound("click");if(m.id==="arena")goToArena();else setScreen(m.id as "map"|"shop"|"inv");}}
+                    style={{...S.glass,height:"110px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",cursor:"pointer",border:`1px solid ${m.c}`,background:"rgba(20,20,30,0.9)",gap:"6px"}}>
+                    <div style={{fontSize:"36px"}}>{m.i}</div>
+                    <div style={{...S.neon(m.c),fontSize:"13px",fontWeight:"800"}}>{m.t}</div>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr 1fr":"1fr 1fr",gap:isMobile?"12px":"20px",width:isMobile?"100%":"620px",maxWidth:"620px",padding:isMobile?"0 12px":"0"}}>
-            {isAdmin(player!.name)&&(
-              <div onClick={()=>{loadAdminUsers();setScreen("admin");}}
-                style={{...S.glass,height:"210px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",cursor:"pointer",border:"1px solid #f05",background:"rgba(30,0,0,0.84)",gridColumn:"1/-1"}}>
-                <div style={{fontSize:"48px",marginBottom:"10px"}}>🔧</div>
-                <div style={{...S.neon("#f05"),fontSize:"18px",fontWeight:"800"}}>ADMİN PANELİ</div>
+          ) : (
+            /* PC: yatay layout */
+            <div style={{display:"flex",flexDirection:"row",alignItems:"flex-start",justifyContent:"center",gap:"28px",height:"100%",alignContent:"center",flexWrap:"wrap",paddingTop:"20px"}}>
+              <div style={{...S.glass,padding:"36px",textAlign:"center",width:"340px",display:"flex",flexDirection:"column",justifyContent:"center"}}>
+                <div style={{fontSize:"96px",cursor:"pointer",animation:"pulse 2s infinite"}} onClick={()=>setModal("wardrobe")}>{COSTUMES[player!.currentCostume].i}</div>
+                <h2 style={{...S.neon("#fff"),fontSize:"28px",margin:"8px 0"}}>{player?.name}</h2>
+                <div style={{color:"#aaa",marginBottom:"18px"}}>{COSTUMES[player!.currentCostume].n}</div>
+                <div style={{background:"rgba(255,255,255,0.04)",padding:"14px",borderRadius:"12px",textAlign:"left"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:"8px"}}><span>⚔️ Saldırı</span><span style={{color:"#f05",fontWeight:"700"}}>{getStats(player!).atk}</span></div>
+                  <div style={{display:"flex",justifyContent:"space-between"}}><span>🛡️ Can</span><span style={{color:"#0f6",fontWeight:"700"}}>{getStats(player!).maxHp}</span></div>
+                </div>
               </div>
-            )}
-            {[{id:"map",t:"MACERA",i:"🗺️",c:"#fc0"},{id:"arena",t:"ARENA",i:"⚔️",c:"#f05"},{id:"shop",t:"MARKET",i:"🛒",c:"#0f6"},{id:"inv",t:"ÇANTA",i:"🎒",c:"#00eaff"}].map(m=>(
-              <div key={m.id} onClick={()=>{playSound("click");if(m.id==="arena")goToArena();else setScreen(m.id as any);}}
-                style={{...S.glass,height:isMobile?"140px":"210px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",cursor:"pointer",border:`1px solid ${m.c}`,background:"rgba(20,20,30,0.84)"}}>
-                <div style={{fontSize:"64px",marginBottom:"14px"}}>{m.i}</div>
-                <div style={{...S.neon(m.c),fontSize:"20px",fontWeight:"800"}}>{m.t}</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"20px",width:"580px"}}>
+                {isAdmin(player!.name)&&(
+                  <div onClick={()=>{loadAdminUsers();setScreen("admin");}}
+                    style={{...S.glass,height:"180px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",cursor:"pointer",border:"1px solid #f05",background:"rgba(30,0,0,0.84)",gridColumn:"1/-1"}}>
+                    <div style={{fontSize:"44px",marginBottom:"8px"}}>🔧</div>
+                    <div style={{...S.neon("#f05"),fontSize:"18px",fontWeight:"800"}}>ADMİN PANELİ</div>
+                  </div>
+                )}
+                {[{id:"map",t:"MACERA",i:"🗺️",c:"#fc0"},{id:"arena",t:"ARENA",i:"⚔️",c:"#f05"},{id:"shop",t:"MARKET",i:"🛒",c:"#0f6"},{id:"inv",t:"ÇANTA",i:"🎒",c:"#00eaff"}].map(m=>(
+                  <div key={m.id} onClick={()=>{playSound("click");if(m.id==="arena")goToArena();else setScreen(m.id as "map"|"shop"|"inv");}}
+                    style={{...S.glass,height:"190px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",cursor:"pointer",border:`1px solid ${m.c}`,background:"rgba(20,20,30,0.84)"}}>
+                    <div style={{fontSize:"60px",marginBottom:"10px"}}>{m.i}</div>
+                    <div style={{...S.neon(m.c),fontSize:"18px",fontWeight:"800"}}>{m.t}</div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1469,7 +1534,7 @@ export default function Game() {
                 <div style={{display:"flex",justifyContent:"center",gap:"12px",marginTop:"18px",flexWrap:"wrap"}}>
                   {Object.keys(player!.jokers).map(k=>(
                     <button key={k} style={{...S.btn,background:"#444",fontSize:"13px",opacity:player!.jokers[k]===0?0.5:1}}
-                      onClick={()=>useJoker(k as any)} disabled={player!.jokers[k]===0}>
+                      onClick={()=>useJoker(k as "heal"|"5050"|"skip")} disabled={player!.jokers[k]===0}>
                       {k==="heal"?"❤️":k==="skip"?"⏩":"½"} ({player!.jokers[k]})
                     </button>
                   ))}
@@ -1483,7 +1548,7 @@ export default function Game() {
 
       {/* ── ADMİN PANELİ ── */}
       {screen==="admin"&&isAdmin(player!.name)&&(
-        <div style={{flex:1,overflowY:"auto",WebkitOverflowScrolling:"touch",padding:isMobile?"10px":"20px",background:"rgba(10,0,0,0.95)"}}>
+        <div style={{flex:1,overflowY:"auto",padding:isMobile?"10px":"20px",background:"rgba(10,0,0,0.95)"}}>
 
           {/* Sticky başlık + tablar */}
           <div style={{position:"sticky",top:0,zIndex:10,background:"rgba(10,0,0,0.97)",paddingBottom:"10px",marginBottom:"12px",borderBottom:"1px solid rgba(255,0,80,0.3)"}}>
@@ -1593,7 +1658,7 @@ export default function Game() {
 
               <div style={{maxHeight:"550px",overflowY:"auto"}}>
                 {allQuestions.map((q,i)=>(
-                  <div key={(q as any).fbKey||i} style={{...S.glass,padding:"12px",marginBottom:"8px",border:"1px solid rgba(255,255,255,0.08)"}}>
+                  <div key={(q as Q&{fbKey?:string}).fbKey||i} style={{...S.glass,padding:"12px",marginBottom:"8px",border:"1px solid rgba(255,255,255,0.08)"}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:"8px"}}>
                       <div style={{flex:1}}>
                         <div style={{fontWeight:"700",fontSize:"13px",color:"#fc0",marginBottom:"6px"}}>{i+1}. {q.q}</div>
@@ -1613,7 +1678,7 @@ export default function Game() {
                           onClick={()=>setEditingQ({...q})}>✏️</button>
                         <button style={{...S.btn,...S.btnDanger,padding:"5px 10px",fontSize:"11px"}}
                           onClick={async()=>{
-                            const key=(q as any).fbKey;
+                            const key=(q as Q&{fbKey?:string}).fbKey;
                             if(!key||!confirm("Soru silinsin mi?"))return;
                             await set(ref(db,"questions/"+key),null);
                             notify("Soru silindi!");
@@ -1694,70 +1759,79 @@ export default function Game() {
 
       {/* ── MARKET / ÇANTA ── */}
       {(screen==="shop"||screen==="inv")&&(
-        <div style={{flex:1,padding:"22px",overflowY:"auto"}}>
-          <div style={{display:"flex",justifyContent:"space-between",marginBottom:"26px",alignItems:"center"}}>
-            <h1 style={S.neon("#00eaff")}>{screen==="shop"?"MARKET":"ÇANTA"}</h1>
-            <button style={{...S.btn,...S.btnDanger}} onClick={()=>setScreen("menu")}>GERİ</button>
+        <div style={{flex:1,overflowY:"auto",padding:isMobile?"10px 12px":"22px"}}>
+          {/* Sticky başlık */}
+          <div style={{position:"sticky",top:0,zIndex:10,background:"rgba(10,10,20,0.95)",backdropFilter:"blur(8px)",padding:isMobile?"10px 0":"0 0 16px",marginBottom:isMobile?"10px":"20px",display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:isMobile?"1px solid rgba(255,255,255,0.08)":"none"}}>
+            <h2 style={{...S.neon("#00eaff"),margin:0,fontSize:isMobile?"18px":"26px"}}>{screen==="shop"?"🛒 MARKET":"🎒 ÇANTA"}</h2>
+            <button style={{...S.btn,...S.btnDanger,fontSize:"12px",padding:"8px 12px"}} onClick={()=>setScreen("menu")}>← GERİ</button>
           </div>
           {screen==="inv"&&(
-            <div style={{...S.glass,padding:"18px",marginBottom:"20px"}}>
-              <h2 style={S.neon("#fc0")}>🎽 KUŞANILANLAR</h2>
-              <div style={{display:"flex",gap:"14px",marginTop:"14px",flexWrap:"wrap"}}>
+            <div style={{...S.glass,padding:isMobile?"12px":"18px",marginBottom:"16px"}}>
+              <div style={{fontWeight:"800",color:"#fc0",marginBottom:"10px",fontSize:isMobile?"14px":"16px"}}>🎽 KUŞANILANLAR</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px"}}>
                 {(["wep","arm"] as const).map(slot=>(
-                  <div key={slot} style={{...S.glass,padding:"14px",width:"200px",textAlign:"center"}}>
-                    <div style={{fontWeight:"800",marginBottom:"8px"}}>{slot==="wep"?"⚔️ Silah":"🛡️ Zırh"}</div>
+                  <div key={slot} style={{...S.glass,padding:"12px",textAlign:"center"}}>
+                    <div style={{fontWeight:"800",marginBottom:"6px",fontSize:"13px"}}>{slot==="wep"?"⚔️ Silah":"🛡️ Zırh"}</div>
                     {player?.equipped[slot]?(
                       <>
-                        <div style={{fontSize:"40px"}}>{player.equipped[slot]!.icon}</div>
-                        <div>{player.equipped[slot]!.name}</div>
-                        <button style={{...S.btn,marginTop:"10px",width:"100%",background:"#f05"}}
+                        <div style={{fontSize:isMobile?"32px":"40px"}}>{player.equipped[slot]!.icon}</div>
+                        <div style={{fontSize:"12px",margin:"4px 0"}}>{player.equipped[slot]!.name}</div>
+                        <button style={{...S.btn,marginTop:"8px",width:"100%",background:"#f05",fontSize:"11px",padding:"7px"}}
                           onClick={()=>{const np={...player!};np.inventory.push(np.equipped[slot]!);np.equipped[slot]=null;save(np);notify("Çıkarıldı!");}}>ÇIKAR</button>
                       </>
-                    ):<div style={{color:"#aaa"}}>Boş</div>}
+                    ):<div style={{color:"#555",fontSize:"13px",padding:"10px 0"}}>Boş</div>}
                   </div>
                 ))}
               </div>
             </div>
           )}
-          <div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(auto-fit,minmax(150px,1fr))":"repeat(auto-fit,minmax(200px,1fr))",gap:"18px"}}>
+          <div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,1fr)":"repeat(auto-fit,minmax(190px,1fr))",gap:isMobile?"10px":"16px"}}>
             {screen==="shop"?(
               <>
                 {Object.values(ITEMS).filter(it=>it.type!=="joker").map(it=>(
-                  <div key={it.id} style={{...S.glass,padding:"18px",textAlign:"center"}}>
-                    <div style={{fontSize:"46px",marginBottom:"8px"}}>{it.icon}</div>
-                    <div style={{fontWeight:"800",fontSize:"16px"}}>{it.name}</div>
-                    <div style={{color:"#fc0",margin:"8px 0"}}>{it.cost} G</div>
-                    <button style={{...S.btn,...S.btnSuccess,width:"100%"}} onClick={()=>buyItem(it)}>SATIN AL</button>
+                  <div key={it.id} style={{...S.glass,padding:isMobile?"12px":"18px",textAlign:"center"}}>
+                    <div style={{fontSize:isMobile?"38px":"46px",marginBottom:"6px"}}>{it.icon}</div>
+                    <div style={{fontWeight:"800",fontSize:isMobile?"13px":"15px"}}>{it.name}</div>
+                    <div style={{color:"#fc0",margin:"6px 0",fontSize:"14px"}}>{it.cost} 🪙</div>
+                    <button style={{...S.btn,...S.btnSuccess,width:"100%",fontSize:"12px",padding:"9px"}} onClick={()=>buyItem(it)}>SATIN AL</button>
                   </div>
                 ))}
-                <div style={{gridColumn:"1 / -1",marginTop:"30px"}}><h2 style={S.neon("#fc0")}>🎴 JOKERLER</h2></div>
+                <div style={{gridColumn:"1/-1",paddingTop:"16px",borderTop:"1px solid rgba(255,255,255,0.08)"}}>
+                  <div style={{...S.neon("#fc0"),fontWeight:"800",fontSize:isMobile?"14px":"16px",marginBottom:"12px"}}>🎴 JOKERLER</div>
+                </div>
                 {Object.values(ITEMS).filter(it=>it.type==="joker").map(it=>(
-                  <div key={it.id} style={{...S.glass,padding:"18px",textAlign:"center"}}>
-                    <div style={{fontSize:"46px",marginBottom:"8px"}}>{it.icon}</div>
-                    <div style={{fontWeight:"800",fontSize:"16px"}}>{it.name}</div>
-                    <div style={{color:"#fc0",margin:"8px 0"}}>{it.cost} G</div>
-                    <button style={{...S.btn,...S.btnSuccess,width:"100%"}} onClick={()=>buyItem(it)}>SATIN AL</button>
+                  <div key={it.id} style={{...S.glass,padding:isMobile?"12px":"18px",textAlign:"center"}}>
+                    <div style={{fontSize:isMobile?"38px":"46px",marginBottom:"6px"}}>{it.icon}</div>
+                    <div style={{fontWeight:"800",fontSize:isMobile?"13px":"15px"}}>{it.name}</div>
+                    <div style={{color:"#fc0",margin:"6px 0",fontSize:"14px"}}>{it.cost} 🪙</div>
+                    <button style={{...S.btn,...S.btnSuccess,width:"100%",fontSize:"12px",padding:"9px"}} onClick={()=>buyItem(it)}>SATIN AL</button>
                   </div>
                 ))}
               </>
             ):(
-              player!.inventory.map((it,i)=>(
-                <div key={i} style={{...S.glass,padding:"16px",textAlign:"center"}}>
-                  <div style={{fontSize:"40px"}}>{it.icon}</div>
-                  <div style={{fontWeight:700}}>{it.name}</div>
-                  {it.type!=="joker"&&<button style={{...S.btn,marginTop:"10px",width:"100%"}} onClick={()=>equipItem(it)}>KUŞAN</button>}
-                  <button style={{...S.btn,marginTop:"8px",width:"100%",background:"#fc0",color:"black"}} onClick={()=>sellItem(it)}>SAT</button>
+              player!.inventory.length===0?(
+                <div style={{gridColumn:"1/-1",textAlign:"center",padding:"40px",color:"#555"}}>
+                  <div style={{fontSize:"48px",marginBottom:"10px"}}>🎒</div>
+                  Çantanız boş!
+                </div>
+              ):player!.inventory.map((it,i)=>(
+                <div key={i} style={{...S.glass,padding:isMobile?"12px":"16px",textAlign:"center"}}>
+                  <div style={{fontSize:isMobile?"34px":"40px",marginBottom:"4px"}}>{it.icon}</div>
+                  <div style={{fontWeight:"700",fontSize:"13px",marginBottom:"6px"}}>{it.name}</div>
+                  {it.type!=="joker"&&<button style={{...S.btn,width:"100%",fontSize:"11px",padding:"8px",marginBottom:"6px"}} onClick={()=>equipItem(it)}>KUŞAN</button>}
+                  <button style={{...S.btn,width:"100%",fontSize:"11px",padding:"8px",background:"linear-gradient(135deg,#f7971e,#ffd200)",color:"#000"}} onClick={()=>sellItem(it)}>SAT</button>
                 </div>
               ))
             )}
           </div>
+          <div style={{height:"20px"}}/>
         </div>
       )}
 
       {/* ── BÖLGE MODAL ── */}
       {modal&&modal!=="wardrobe"&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.9)",zIndex:100,display:"flex",justifyContent:"center",alignItems:"center"}}>
-          <div style={{...S.glass,padding:"36px",width:"640px",textAlign:"center",border:"2px solid #00eaff"}}>
+          <div style={{...S.glass,padding:isMobile?"16px":"36px",width:isMobile?"calc(100vw - 32px)":"640px",maxWidth:"640px",textAlign:"center",border:"2px solid #00eaff",maxHeight:"90vh",overflowY:"auto"}}>
             <h2 style={S.neon("#00eaff")}>{modal.name}</h2>
             <div style={{margin:"24px 0",maxHeight:"400px",overflowY:"auto"}}>
               {modal.levels.map((l,i)=>(
